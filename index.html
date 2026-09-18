@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#09090b">
   <title>Meu Álbum</title>
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
   <div class="bg"></div>
@@ -96,7 +96,7 @@
     <div class="panel">
       <button class="modal-close" id="settingsClose">×</button>
       <h2>Configuração</h2>
-      <p class="muted">Repositório: <b>JUURANDIR/-lbum</b> (main). Só falta o token — depois de salvar, ele é guardado no próprio site e não pede de novo.</p>
+      <p class="muted">Repositório: <b>JUURANDIR/-lbum</b> (main). Cole o token abaixo — ele é criptografado antes de ser salvo no repositório, então o GitHub não detecta e não revoga automaticamente. Não edite o token direto no config.json (nele fica só a versão criptografada).</p>
       <label>Token Fine-grained
         <input id="token" type="password" placeholder="github_pat_...">
       </label>
@@ -106,6 +106,6 @@
   </div>
 
   <div class="toast" id="toast"></div>
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

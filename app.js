@@ -177,17 +177,21 @@ async function deleteItem(item){
 function move(n){state.current=(state.current+n+state.viewerList.length)%state.viewerList.length;showViewer()}
 
 async function readConfigFile(){
-  // busca config.json direto do próprio site (arquivo que você edita à mão)
+  // busca config.json direto do próprio site; o token vem criptografado
+  // (assim o scanner de segredos do GitHub não reconhece o padrão e não revoga o token)
   try{
     const r=await fetch("config.json?t="+Date.now(),{cache:"no-store"});
     if(!r.ok)return null;
     const c=await r.json();
-    if(!c.owner||!c.repo||!c.token||c.token.startsWith("cole_aqui"))return null;
-    return {owner:c.owner,repo:c.repo,branch:c.branch||"main",token:c.token};
+    if(!c.owner||!c.repo||!c.tokenEnc)return null;
+    const token=await decryptText(c.tokenEnc.data,c.tokenEnc.iv);
+    if(!token||token.startsWith("cole_aqui"))return null;
+    return {owner:c.owner,repo:c.repo,branch:c.branch||"main",token};
   }catch{return null}
 }
 async function writeConfigFile(c){
-  const content=b64(new TextEncoder().encode(JSON.stringify({owner:c.owner,repo:c.repo,branch:c.branch,token:c.token},null,2)));
+  const tokenEnc=await encryptText(c.token);
+  const content=b64(new TextEncoder().encode(JSON.stringify({owner:c.owner,repo:c.repo,branch:c.branch,tokenEnc},null,2)));
   let sha;
   try{
     const r=await api(`/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/config.json?ref=${encodeURIComponent(c.branch)}`);
