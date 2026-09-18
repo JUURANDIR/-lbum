@@ -111,9 +111,36 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 
+/* =====================================================
+   Login: fundo translúcido para a marca aparecer por trás
+   ===================================================== */
+#login.modal{
+  background:linear-gradient(180deg, rgba(15,8,16,.72), rgba(15,8,16,.88));
+  backdrop-filter:blur(3px);
+}
+
+/* =====================================================
+   Modo logado: some com a marca + hero, foco só no álbum
+   ===================================================== */
+body.logged-in .branding{ display:none; }
+body.logged-in .hero{ display:none; }
+
+/* topbar enxuta, só com o ⋯ alinhado à direita */
+body.logged-in .topbar{
+  padding:14px 22px 6px;
+  justify-content:flex-end;
+  align-items:center;
+}
+
+/* dá um respiro no container quando o hero some */
+body.logged-in .container{
+  padding-top:6px;
+}
+
 @media(max-width:800px){.gallery{grid-template-columns:repeat(3,minmax(0,1fr))}.hero{align-items:flex-start}.hero-stat{display:none}}
 @media(max-width:520px){
   .topbar{padding-top:23px}
+  body.logged-in .topbar{padding-top:10px}
   .gallery{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
   .card{border-radius:13px}
   .toolbar{top:0}.date{flex:1}.btn{flex:1}.primary{flex:1}

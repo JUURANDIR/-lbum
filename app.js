@@ -1,10 +1,10 @@
 /* =========================================================
-   Álbum Jurandir & Mayanne — app.js (v10)
+   Álbum Jurandir & Mayanne — app.js (v12)
    ========================================================= */
 (function(){
 "use strict";
 
-const VERSION = "10";
+const VERSION = "12";
 document.title = "Meu Álbum";
 
 /* ---------- segurança de carregamento ---------- */
@@ -79,6 +79,7 @@ function doLogin(pass){
   const badge = $("#userBadge");
   if(badge){ badge.textContent = "Olá, " + found; badge.classList.remove("hidden"); }
   $("#logoutBtn")?.classList.remove("hidden");
+  document.body.classList.add("logged-in");   // <-- esconde marca + hero
   return true;
 }
 
@@ -93,6 +94,7 @@ function requireLogin(){
   const badge = $("#userBadge");
   if(badge){ badge.textContent = "Olá, " + u; badge.classList.remove("hidden"); }
   $("#logoutBtn")?.classList.remove("hidden");
+  document.body.classList.add("logged-in");   // <-- esconde marca + hero
   return true;
 }
 
@@ -236,12 +238,10 @@ const urlCache = new Map();
 const pendingMap = new Map();
 
 async function fetchEncryptedBuffer(item){
-  // tenta CDN público (sem header — evita preflight CORS que causava "Failed to fetch")
   try{
     const r = await fetch(rawUrl(item.path));
     if(r.ok) return await r.arrayBuffer();
   }catch{}
-  // fallback API autenticada
   const r = await api(contentsPath(String(item.path).split("/").map(enc).join("/")) + "?ref=" + enc(cfg().branch), {
     headers: {Accept: "application/vnd.github.raw"}
   });
@@ -460,15 +460,10 @@ function renderGallery(){
 
   if(moreEl) moreEl.classList.toggle("hidden", shown.length >= state.filtered.length);
 
-  const vBottom = window.innerHeight + 600;
-  gallery.querySelectorAll(".card").forEach(card => {
-    const r = card.getBoundingClientRect();
-    if(r.top < vBottom && r.bottom > -600){
-      loadCardMedia(card);
-    } else {
-      mediaObserver.observe(card);
-    }
-  });
+  const cards = gallery.querySelectorAll(".card");
+  for(let i = 0; i < cards.length; i++){
+    loadCardMedia(cards[i]);
+  }
 }
 
 /* ---------- viewer ---------- */
@@ -776,6 +771,7 @@ ready(() => {
     if(d) d.classList.add("hidden");
     try{ sessionStorage.removeItem("albumUser"); }catch{}
     state.user = null;
+    document.body.classList.remove("logged-in");
     location.reload();
   });
 
@@ -881,7 +877,6 @@ ready(() => {
 
   console.log("[album] listeners ok, versão", VERSION);
 
-  // init
   try{
     if(!requireLogin()){
       console.log("[album] aguardando login");
