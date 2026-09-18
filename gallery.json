@@ -1,5 +1,93 @@
 [
   {
+    "name": "1001468983.jpg",
+    "path": "media/2026/09/2026-09-18/1789707938753-1001468983.jpg.enc",
+    "date": "2026-09-18",
+    "type": "image/jpeg",
+    "bytes": 1253195,
+    "iv": "n+97sai7kYZDNw0o",
+    "sha": "b16ed2a99bd36bf044b4e1e2b22bcade31226678",
+    "uploadedAt": "2026-09-18T05:05:41.034Z",
+    "uploadedBy": "Jurandir"
+  },
+  {
+    "name": "1001469237.jpg",
+    "path": "media/2026/09/2026-09-18/1789707936696-1001469237.jpg.enc",
+    "date": "2026-09-18",
+    "type": "image/jpeg",
+    "bytes": 370405,
+    "iv": "EUpTmWr36bweVuQ7",
+    "sha": "a96d8c49c30c102c86edcee0e76a635efdff7ccd",
+    "uploadedAt": "2026-09-18T05:05:38.752Z",
+    "uploadedBy": "Jurandir"
+  },
+  {
+    "name": "1001469695.jpg",
+    "path": "media/2026/09/2026-09-18/1789707934686-1001469695.jpg.enc",
+    "date": "2026-09-18",
+    "type": "image/jpeg",
+    "bytes": 432312,
+    "iv": "UhWlvKrWNlr0OUqz",
+    "sha": "98a00bcd5ea68bf0cea17178669f4035be55832d",
+    "uploadedAt": "2026-09-18T05:05:36.695Z",
+    "uploadedBy": "Jurandir"
+  },
+  {
+    "name": "1001469671.jpg",
+    "path": "media/2026/09/2026-09-18/1789707932763-1001469671.jpg.enc",
+    "date": "2026-09-18",
+    "type": "image/jpeg",
+    "bytes": 440068,
+    "iv": "U2XEz1rLUKfPdsi/",
+    "sha": "a85e6ec74cbe3311b58d92e277bd081ac2b4c622",
+    "uploadedAt": "2026-09-18T05:05:34.685Z",
+    "uploadedBy": "Jurandir"
+  },
+  {
+    "name": "1001469795.jpg",
+    "path": "media/2026/09/2026-09-18/1789707930516-1001469795.jpg.enc",
+    "date": "2026-09-18",
+    "type": "image/jpeg",
+    "bytes": 437367,
+    "iv": "xLOAupvFbg2+/2pq",
+    "sha": "6178318ef2f0be766763e3d66e8183e747c90869",
+    "uploadedAt": "2026-09-18T05:05:32.762Z",
+    "uploadedBy": "Jurandir"
+  },
+  {
+    "name": "1001469796.jpg",
+    "path": "media/2026/09/2026-09-18/1789707928853-1001469796.jpg.enc",
+    "date": "2026-09-18",
+    "type": "image/jpeg",
+    "bytes": 224923,
+    "iv": "BBw0TagB1VaEPN/c",
+    "sha": "35e29be7ec3c09ca23ed554181087ff90525005d",
+    "uploadedAt": "2026-09-18T05:05:30.515Z",
+    "uploadedBy": "Jurandir"
+  },
+  {
+    "name": "1001469800.jpg",
+    "path": "media/2026/09/2026-09-18/1789707927015-1001469800.jpg.enc",
+    "date": "2026-09-18",
+    "type": "image/jpeg",
+    "bytes": 534813,
+    "iv": "gofZ8L1Z9KpbyrYk",
+    "sha": "2f1450f76db113188c96638949018421cfecd737",
+    "uploadedAt": "2026-09-18T05:05:28.852Z",
+    "uploadedBy": "Jurandir"
+  },
+  {
+    "name": "1001469801.jpg",
+    "path": "media/2026/09/2026-09-18/1789707925160-1001469801.jpg.enc",
+    "date": "2026-09-18",
+    "type": "image/jpeg",
+    "bytes": 445542,
+    "iv": "+qbBJS50y8qvg15W",
+    "sha": "d7aa9377f86ea142a31a0dd9ba68f2108f85a40d",
+    "uploadedAt": "2026-09-18T05:05:27.014Z",
+    "uploadedBy": "Jurandir"
+  },
+  {
     "name": "1001468948.mp4",
     "path": "media/2026/09/2026-09-18/1789707896176-1001468948.mp4.enc",
     "date": "2026-09-18",
