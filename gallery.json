@@ -1,16 +1,5 @@
 [
   {
-    "name": "1001469237.jpg",
-    "path": "media/2026/09/2026-09-18/1789707936696-1001469237.jpg.enc",
-    "date": "2026-09-18",
-    "type": "image/jpeg",
-    "bytes": 370405,
-    "iv": "EUpTmWr36bweVuQ7",
-    "sha": "a96d8c49c30c102c86edcee0e76a635efdff7ccd",
-    "uploadedAt": "2026-09-18T05:05:38.752Z",
-    "uploadedBy": "Jurandir"
-  },
-  {
     "name": "1001469695.jpg",
     "path": "media/2026/09/2026-09-18/1789707934686-1001469695.jpg.enc",
     "date": "2026-09-18",
