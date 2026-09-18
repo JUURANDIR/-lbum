@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#09090b">
   <title>Meu Álbum</title>
-  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
   <div class="bg"></div>
@@ -16,9 +16,14 @@
       <p id="albumSubtitle">Nossos momentos, guardadinhos aqui.</p>
     </div>
     <div class="topbar-actions">
-      <span class="user-badge hidden" id="userBadge"></span>
-      <button class="ghost hidden" id="logoutBtn">Sair</button>
-      <button class="ghost" id="settingsBtn">⚙ Configurar</button>
+      <div class="menu-wrap">
+        <button class="ghost menu-dots" id="menuBtn">⋯</button>
+        <div class="menu-dropdown hidden" id="menuDropdown">
+          <span class="user-badge hidden" id="userBadge"></span>
+          <button class="menu-item" id="settingsBtn">⚙ Configurar</button>
+          <button class="menu-item" id="logoutBtn">Sair</button>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -91,26 +96,16 @@
     <div class="panel">
       <button class="modal-close" id="settingsClose">×</button>
       <h2>Configuração</h2>
-      <p class="muted">Esses dados ficam somente neste navegador. Para funcionar em qualquer aparelho sem pedir de novo, edite o arquivo <b>config.json</b> na raiz do repositório do site e preencha owner/repo/branch/token lá.</p>
-      <label>Usuário/organização
-        <input id="owner" placeholder="seu-usuario">
-      </label>
-      <label>Repositório
-        <input id="repo" placeholder="meu-album">
-      </label>
-      <label>Branch
-        <input id="branch" value="main">
-      </label>
+      <p class="muted">Repositório: <b>JUURANDIR/-lbum</b> (main). Só falta o token — depois de salvar, ele é guardado no próprio site e não pede de novo.</p>
       <label>Token Fine-grained
         <input id="token" type="password" placeholder="github_pat_...">
       </label>
-      <div class="warning">⚠ O repositório e os arquivos publicados pelo GitHub Pages serão públicos. Nunca use um token com permissões maiores que o necessário.</div>
+      <div class="warning">⚠ Nunca use um token com permissões maiores que o necessário (Contents → Read and write, só neste repositório).</div>
       <button class="primary wide" id="saveSettings">Salvar e conectar</button>
-      <p class="help">Permissão necessária: <b>Contents → Read and write</b> somente neste repositório.</p>
     </div>
   </div>
 
   <div class="toast" id="toast"></div>
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

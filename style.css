@@ -59,7 +59,12 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 .toast{position:fixed;bottom:22px;left:50%;transform:translate(-50%,20px);background:#18181b;border:1px solid #333;border-radius:12px;padding:12px 16px;opacity:0;pointer-events:none;z-index:50;transition:.25s;box-shadow:var(--shadow)}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .topbar-actions{display:flex;align-items:center;gap:10px}
-.user-badge{padding:8px 13px;border-radius:12px;background:#1b1420;border:1px solid #3a2a4a;color:#e3c9ff;font-size:13px;font-weight:700}
+.menu-wrap{position:relative}
+.menu-dots{font-size:20px;line-height:1;padding:10px 16px}
+.menu-dropdown{position:absolute;right:0;top:calc(100% + 8px);display:flex;flex-direction:column;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;min-width:170px;box-shadow:var(--shadow);z-index:10}
+.menu-item{text-align:left;padding:10px 12px;border-radius:10px;background:transparent;color:var(--text)}
+.menu-item:hover{background:#2a1420}
+.user-badge{padding:8px 12px;border-radius:12px;background:#2a1420;border:1px solid #4a2030;color:#ffc2d4;font-size:12px;font-weight:700;text-align:center}
 .filter-group{display:flex;gap:8px;flex-wrap:wrap;padding:0 0 18px}
 .filter-btn{padding:9px 13px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:#bbb;font-size:13px}
 .filter-btn.active{background:#4a1a30;border-color:#ff5c8a;color:#fff}

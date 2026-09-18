@@ -1,5 +1,6 @@
 const $=s=>document.querySelector(s);
 const state={items:[],filtered:[],page:0,pageSize:60,current:0,config:null,user:null,uploaderWho:""};
+const DEFAULT_OWNER="JUURANDIR",DEFAULT_REPO="-lbum",DEFAULT_BRANCH="main";
 
 /* ---------- login (define quem está usando o álbum) ---------- */
 const USERS={Jurandir:"Jurandir",Mayanne:"Mayanne"};
@@ -185,6 +186,18 @@ async function readConfigFile(){
     return {owner:c.owner,repo:c.repo,branch:c.branch||"main",token:c.token};
   }catch{return null}
 }
+async function writeConfigFile(c){
+  const content=b64(new TextEncoder().encode(JSON.stringify({owner:c.owner,repo:c.repo,branch:c.branch,token:c.token},null,2)));
+  let sha;
+  try{
+    const r=await api(`/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/config.json?ref=${encodeURIComponent(c.branch)}`);
+    if(r.ok)sha=(await r.json()).sha;
+  }catch{}
+  const body={message:"album: salvar configuração",content,branch:c.branch};
+  if(sha)body.sha=sha;
+  const res=await api(`/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/config.json`,{method:"PUT",body:JSON.stringify(body)});
+  if(!res.ok)throw Error((await res.json()).message||"Falha ao salvar configuração no repositório.");
+}
 async function readConfig(){
   const fromFile=await readConfigFile();
   if(fromFile){state.config=fromFile;await loadGallery();return}
@@ -229,17 +242,24 @@ async function uploadFiles(files){
 
 $("#loginBtn").onclick=()=>{if(doLogin($("#loginPassword").value))readConfig()};
 $("#loginPassword").addEventListener("keydown",e=>{if(e.key==="Enter"&&doLogin($("#loginPassword").value))readConfig()});
-$("#logoutBtn").onclick=()=>{sessionStorage.removeItem("albumUser");state.user=null;location.reload()};
+$("#logoutBtn").onclick=()=>{$("#menuDropdown").classList.add("hidden");sessionStorage.removeItem("albumUser");state.user=null;location.reload()};
+$("#menuBtn").onclick=(e)=>{e.stopPropagation();$("#menuDropdown").classList.toggle("hidden")};
+document.addEventListener("click",(e)=>{if(!e.target.closest(".menu-wrap"))$("#menuDropdown").classList.add("hidden")});
 
-$("#settingsBtn").onclick=()=>{if(!requireLogin())return;$("#settings").classList.remove("hidden");const c=cfg();if(c){$("#owner").value=c.owner;$("#repo").value=c.repo;$("#branch").value=c.branch}}
+$("#settingsBtn").onclick=()=>{$("#menuDropdown").classList.add("hidden");if(!requireLogin())return;$("#settings").classList.remove("hidden")}
 $("#settingsClose").onclick=()=>$("#settings").classList.add("hidden");
 $("#saveSettings").onclick=async()=>{
-  const c={owner:$("#owner").value.trim(),repo:$("#repo").value.trim(),branch:$("#branch").value.trim()||"main",token:$("#token").value.trim()};
-  if(!c.owner||!c.repo||!c.token)return toast("Preencha usuário, repositório e token.");
-  saveCfg(c);
-  $("#settings").classList.add("hidden");
-  toast("Configuração salva neste navegador. Para valer em qualquer dispositivo, edite o config.json do site.");
-  await loadGallery();
+  const token=$("#token").value.trim();
+  if(!token)return toast("Cole o token.");
+  const c={owner:DEFAULT_OWNER,repo:DEFAULT_REPO,branch:DEFAULT_BRANCH,token};
+  state.config=c;
+  try{
+    await writeConfigFile(c);
+    saveCfg(c);
+    $("#settings").classList.add("hidden");
+    toast("Configuração salva. Não vai pedir de novo.");
+    await loadGallery();
+  }catch(e){toast(e.message)}
 };
 $("#uploadBtn").onclick=()=>{if(!requireLogin())return;$("#fileInput").click()};
 $("#fileInput").onchange=e=>uploadFiles(e.target.files);
