@@ -6,7 +6,8 @@
 
 O GitHub Pages é um site estático. Para permitir upload pelo navegador, este projeto usa a REST API do GitHub.
 
-**O token não fica no código e não é salvo no repositório.** Ele fica apenas no `sessionStorage` desta aba/sessão.
+**O token é salvo criptografado em `config.json` no próprio repositório.**
+A chave de criptografia vive dentro do `app.js` (que é público), então isso **não é uma proteção real** — serve apenas para que o scanner de segredos do GitHub não revogue o token automaticamente. Trate o repositório como público em relação ao token.
 
 ### Segurança
 
@@ -14,7 +15,7 @@ Crie um Fine-grained Personal Access Token no GitHub com acesso **somente ao rep
 
 - Repository permissions → Contents → Read and write
 
-Não coloque o token dentro de `app.js`, `index.html` ou qualquer arquivo publicado.
+Não coloque o token em texto puro em `app.js`, `index.html` ou qualquer outro arquivo.
 
 ### Limitações
 
@@ -35,19 +36,9 @@ Para um álbum grande, use Git LFS ou armazenamento de objetos/CDN em vez de tra
 6. Salve.
 7. Abra o endereço fornecido pelo GitHub Pages.
 8. Clique em Configurar.
-9. Informe usuário, repositório, branch e seu Fine-grained token.
+9. Cole seu Fine-grained token.
 10. Clique em Salvar e conectar.
 
 O `gallery.json` será criado automaticamente no primeiro upload.
 
 ## Estrutura criada automaticamente
-
-media/
-  2026/
-    09/
-      2026-09-17/
-        1758140000000-foto.jpg
-
-gallery.json
-
-A data usada é a data escolhida no campo de data. Se nenhuma data for escolhida, o site usa a data atual do navegador.

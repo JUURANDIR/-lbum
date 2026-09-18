@@ -5,10 +5,18 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#09090b">
   <title>Meu Álbum</title>
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
   <div class="bg"></div>
+
+  <div class="upload-progress hidden" id="uploadProgress">
+    <div class="upload-progress-inner">
+      <div class="upload-progress-bar" id="uploadProgressBar"></div>
+    </div>
+    <div class="upload-progress-label" id="uploadProgressLabel">0%</div>
+  </div>
+
   <header class="topbar">
     <div>
       <div class="eyebrow">NOSSO ÁLBUM ❤</div>
@@ -106,6 +114,6 @@
   </div>
 
   <div class="toast" id="toast"></div>
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>
