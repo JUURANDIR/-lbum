@@ -1,5 +1,21 @@
 [
   {
+    "name": "1001471232.jpg",
+    "path": "media/2026/09/2026-09-18/1789767592945-1001471232.jpg.enc",
+    "date": "2026-09-18",
+    "takenAt": "2026-09-18",
+    "lat": null,
+    "lon": null,
+    "type": "image/jpeg",
+    "bytes": 787513,
+    "iv": "WqEYYzazLoKauZW7",
+    "sha": "f698934d6906bdb7576e936b6d5ddc9cea562ce4",
+    "uploadedAt": "2026-09-18T21:39:55.397Z",
+    "uploadedBy": "Jurandir",
+    "categories": [],
+    "caption": ""
+  },
+  {
     "name": "IMG-20260714-WA0097.jpg",
     "path": "media/2026/09/2026-09-18/1789762930859-IMG-20260714-WA0097.jpg.enc",
     "date": "2026-09-18",
