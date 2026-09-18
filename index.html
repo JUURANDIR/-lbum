@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#09090b">
   <title>Meu Álbum</title>
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
   <div class="bg"></div>
@@ -17,11 +17,11 @@
     </div>
     <div class="topbar-actions">
       <div class="menu-wrap">
-        <button class="ghost menu-dots" id="menuBtn">⋯</button>
+        <button type="button" class="ghost menu-dots" id="menuBtn">⋯</button>
         <div class="menu-dropdown hidden" id="menuDropdown">
           <span class="user-badge hidden" id="userBadge"></span>
-          <button class="menu-item" id="settingsBtn">⚙ Configurar</button>
-          <button class="menu-item" id="logoutBtn">Sair</button>
+          <button type="button" class="menu-item" id="settingsBtn">⚙ Configurar</button>
+          <button type="button" class="menu-item" id="logoutBtn">Sair</button>
         </div>
       </div>
     </div>
@@ -46,16 +46,16 @@
         <input id="searchInput" type="search" placeholder="Pesquisar por nome ou data...">
       </label>
       <input id="dateInput" class="date" type="date">
-      <button class="btn" id="todayBtn">Hoje</button>
-      <button class="btn" id="clearBtn">Limpar</button>
-      <button class="primary" id="uploadBtn">＋ Adicionar</button>
+      <button type="button" class="btn" id="todayBtn">Hoje</button>
+      <button type="button" class="btn" id="clearBtn">Limpar</button>
+      <button type="button" class="primary" id="uploadBtn">＋ Adicionar</button>
       <input id="fileInput" type="file" accept="image/*,video/*" multiple hidden>
     </section>
 
     <section class="filter-group" id="uploaderFilter">
-      <button class="filter-btn active" data-who="">Todos</button>
-      <button class="filter-btn" data-who="Jurandir">Upado por Jurandir</button>
-      <button class="filter-btn" data-who="Mayanne">Upado por Mayanne</button>
+      <button type="button" class="filter-btn active" data-who="">Todos</button>
+      <button type="button" class="filter-btn" data-who="Jurandir">Upado por Jurandir</button>
+      <button type="button" class="filter-btn" data-who="Mayanne">Upado por Mayanne</button>
     </section>
 
     <section class="timeline-nav" id="timelineNav"></section>
@@ -65,7 +65,7 @@
       <h3>Nenhuma memória encontrada</h3>
       <p>Tente outra data ou adicione novos arquivos.</p>
     </div>
-    <button id="loadMore" class="load-more hidden">Carregar mais</button>
+    <button type="button" id="loadMore" class="load-more hidden">Carregar mais</button>
   </main>
 
   <div class="modal hidden" id="login">
@@ -76,36 +76,36 @@
         <input id="loginPassword" type="password" placeholder="Sua senha" autocomplete="current-password">
       </label>
       <div id="loginError" class="warning hidden">Senha incorreta.</div>
-      <button class="primary wide" id="loginBtn">Entrar</button>
+      <button type="button" class="primary wide" id="loginBtn">Entrar</button>
     </div>
   </div>
 
   <div class="modal hidden" id="viewer">
-    <button class="modal-close" id="viewerClose">×</button>
-    <button class="viewer-arrow left" id="prevBtn">‹</button>
+    <button type="button" class="modal-close" id="viewerClose">×</button>
+    <button type="button" class="viewer-arrow left" id="prevBtn">‹</button>
     <div class="viewer-content" id="viewerContent"></div>
-    <button class="viewer-arrow right" id="nextBtn">›</button>
+    <button type="button" class="viewer-arrow right" id="nextBtn">›</button>
     <div class="viewer-caption" id="viewerCaption"></div>
     <div class="viewer-actions">
-      <button class="btn" id="viewerDownload">⬇ Baixar</button>
-      <button class="btn danger" id="viewerDelete">🗑 Excluir</button>
+      <button type="button" class="btn" id="viewerDownload">⬇ Baixar</button>
+      <button type="button" class="btn danger" id="viewerDelete">🗑 Excluir</button>
     </div>
   </div>
 
   <div class="modal hidden" id="settings">
     <div class="panel">
-      <button class="modal-close" id="settingsClose">×</button>
+      <button type="button" class="modal-close" id="settingsClose">×</button>
       <h2>Configuração</h2>
       <p class="muted">Repositório: <b>JUURANDIR/-lbum</b> (main). Cole o token abaixo — ele é criptografado antes de ser salvo no repositório, então o GitHub não detecta e não revoga automaticamente. Não edite o token direto no config.json (nele fica só a versão criptografada).</p>
       <label>Token Fine-grained
         <input id="token" type="password" placeholder="github_pat_...">
       </label>
       <div class="warning">⚠ Nunca use um token com permissões maiores que o necessário (Contents → Read and write, só neste repositório).</div>
-      <button class="primary wide" id="saveSettings">Salvar e conectar</button>
+      <button type="button" class="primary wide" id="saveSettings">Salvar e conectar</button>
     </div>
   </div>
 
   <div class="toast" id="toast"></div>
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>
