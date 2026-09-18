@@ -9,16 +9,5 @@
     "sha": "659a00f61837100faf7e9a950ebe22e17ba774bd",
     "uploadedAt": "2026-09-18T05:04:59.468Z",
     "uploadedBy": "Jurandir"
-  },
-  {
-    "name": "1001468948.mp4",
-    "path": "media/2026/09/2026-09-18/1789706807286-1001468948.mp4.enc",
-    "date": "2026-09-18",
-    "type": "video/mp4",
-    "bytes": 2477468,
-    "iv": "h8CskdpOoppCxp8u",
-    "sha": "3d166486f9ba8063ec380c0b1477012573b8f745",
-    "uploadedAt": "2026-09-18T04:46:50.929Z",
-    "uploadedBy": "Jurandir"
   }
 ]
