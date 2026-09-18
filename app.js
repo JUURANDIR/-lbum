@@ -1,9 +1,71 @@
 const $=s=>document.querySelector(s);
-const state={items:[],filtered:[],page:0,pageSize:60,current:0,config:null};
+const state={items:[],filtered:[],page:0,pageSize:60,current:0,config:null,user:null,uploaderWho:""};
+
+/* ---------- login (define quem está usando o álbum) ---------- */
+const USERS={Jurandir:"Jurandir",Mayanne:"Mayanne"};
+function currentUser(){return state.user||sessionStorage.getItem("albumUser")}
+function doLogin(pass){
+  const found=Object.keys(USERS).find(name=>USERS[name]===pass);
+  if(!found){$("#loginError").classList.remove("hidden");return false}
+  state.user=found;sessionStorage.setItem("albumUser",found);
+  $("#login").classList.add("hidden");$("#loginError").classList.add("hidden");
+  $("#userBadge").textContent="Olá, "+found;$("#userBadge").classList.remove("hidden");
+  $("#logoutBtn").classList.remove("hidden");
+  return true;
+}
+function requireLogin(){
+  const u=currentUser();
+  if(!u){$("#login").classList.remove("hidden");return false}
+  state.user=u;$("#userBadge").textContent="Olá, "+u;$("#userBadge").classList.remove("hidden");
+  $("#logoutBtn").classList.remove("hidden");
+  return true;
+}
+
+/* ---------- criptografia (AES-GCM) dos arquivos enviados ---------- */
+// Chave única compartilhada pelas duas contas: só serve para embaralhar o
+// conteúdo dos arquivos guardados no repositório, não é a senha de login.
+const ENC_PASSPHRASE="jurandir-e-mayanne-album-secreto-v1";
+let cryptoKeyPromise=null;
+function getKey(){
+  if(!cryptoKeyPromise)cryptoKeyPromise=(async()=>{
+    const hash=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(ENC_PASSPHRASE));
+    return crypto.subtle.importKey("raw",hash,{name:"AES-GCM"},false,["encrypt","decrypt"]);
+  })();
+  return cryptoKeyPromise;
+}
+async function encryptBuffer(buf){
+  const key=await getKey(),iv=crypto.getRandomValues(new Uint8Array(12));
+  const cipher=await crypto.subtle.encrypt({name:"AES-GCM",iv},key,buf);
+  return {cipher,iv:b64(iv.buffer)};
+}
+async function decryptBuffer(buf,ivB64){
+  const key=await getKey(),iv=Uint8Array.from(atob(ivB64),c=>c.charCodeAt(0));
+  return crypto.subtle.decrypt({name:"AES-GCM",iv},key,buf);
+}
+async function encryptText(str){
+  const {cipher,iv}=await encryptBuffer(new TextEncoder().encode(str));
+  return {data:b64(cipher),iv};
+}
+async function decryptText(data,iv){
+  const cipherBuf=Uint8Array.from(atob(data),c=>c.charCodeAt(0)).buffer;
+  const plainBuf=await decryptBuffer(cipherBuf,iv);
+  return new TextDecoder().decode(plainBuf);
+}
+async function getDecryptedUrl(item){
+  if(blobUrlCache.has(item.path))return blobUrlCache.get(item.path);
+  const c=cfg();
+  const r=await fetch(rawUrl(item.path),{headers:c?.token?{Authorization:"Bearer "+c.token}:{}});
+  if(!r.ok)throw Error("Falha ao baixar arquivo.");
+  const cipherBuf=await r.arrayBuffer();
+  const plainBuf=await decryptBuffer(cipherBuf,item.iv);
+  const url=URL.createObjectURL(new Blob([plainBuf],{type:item.type||"application/octet-stream"}));
+  blobUrlCache.set(item.path,url);
+  return url;
+}
 
 function toast(msg){const e=$("#toast");e.textContent=msg;e.classList.add("show");clearTimeout(window.__t);window.__t=setTimeout(()=>e.classList.remove("show"),2800)}
-function cfg(){return state.config||JSON.parse(sessionStorage.getItem("albumConfig")||"null")}
-function saveCfg(c){state.config=c;sessionStorage.setItem("albumConfig",JSON.stringify(c))}
+function cfg(){return state.config}
+function saveCfg(c){state.config=c;localStorage.setItem("albumBootstrap",JSON.stringify({owner:c.owner,repo:c.repo,branch:c.branch}))}
 function api(path,opt={}){const c=cfg();if(!c?.token)throw Error("Configure o GitHub primeiro.");return fetch("https://api.github.com"+path,{...opt,headers:{Accept:"application/vnd.github+json",Authorization:"Bearer "+c.token,"X-GitHub-Api-Version":"2026-03-10",...(opt.headers||{})}})}
 function rawUrl(path){const c=cfg();return `https://raw.githubusercontent.com/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/${encodeURIComponent(c.branch)}/${path.split("/").map(encodeURIComponent).join("/")}`}
 function b64(buf){let s="";const a=new Uint8Array(buf);for(let i=0;i<a.length;i+=0x8000)s+=String.fromCharCode(...a.subarray(i,i+0x8000));return btoa(s)}
@@ -23,8 +85,8 @@ async function loadGallery(){
   }catch(e){toast(e.message);render()}
 }
 function apply(){
-  const q=$("#searchInput").value.trim().toLowerCase(),d=$("#dateInput").value;
-  state.filtered=state.items.filter(x=>(!d||x.date===d)&&(!q||x.name.toLowerCase().includes(q)||x.date.includes(q)||niceDate(x.date).toLowerCase().includes(q)));
+  const q=$("#searchInput").value.trim().toLowerCase(),d=$("#dateInput").value,who=state.uploaderWho;
+  state.filtered=state.items.filter(x=>(!d||x.date===d)&&(!who||x.uploadedBy===who)&&(!q||x.name.toLowerCase().includes(q)||x.date.includes(q)||niceDate(x.date).toLowerCase().includes(q)));
   state.page=1;renderGallery();
 }
 function render(){
@@ -34,7 +96,23 @@ function render(){
 function buildTimeline(){
   const groups=[...new Set(state.items.map(x=>x.date.slice(0,7)))];
   $("#timelineNav").innerHTML=groups.map(m=>`<button data-month="${m}">${new Intl.DateTimeFormat("pt-BR",{month:"long",year:"numeric"}).format(new Date(m+"-01T12:00:00"))}</button>`).join("");
-  $("#timelineNav").querySelectorAll("button").forEach(b=>b.onclick=()=>{$("#searchInput").value="";$("#dateInput").value="";state.filtered=state.items.filter(x=>x.date.startsWith(b.dataset.month));state.page=1;renderGallery()});
+  $("#timelineNav").querySelectorAll("button").forEach(b=>b.onclick=()=>{$("#searchInput").value="";$("#dateInput").value="";state.filtered=state.items.filter(x=>x.date.startsWith(b.dataset.month)&&(!state.uploaderWho||x.uploadedBy===state.uploaderWho));state.page=1;renderGallery()});
+}
+const mediaObserver=new IntersectionObserver((entries)=>{
+  entries.forEach(entry=>{
+    if(!entry.isIntersecting)return;
+    mediaObserver.unobserve(entry.target);
+    fillCardMedia(entry.target);
+  });
+},{rootMargin:"250px"});
+async function fillCardMedia(card){
+  const item=state.filtered[+card.dataset.idx];
+  if(!item)return;
+  try{
+    const url=await getDecryptedUrl(item);
+    const isVideo=item.type.startsWith("video");
+    card.querySelector(".media-wrap").innerHTML=isVideo?`<video src="${url}" muted preload="metadata" playsinline></video>`:`<img src="${url}" alt="">`;
+  }catch(e){card.querySelector(".media-wrap").textContent="Erro ao carregar"}
 }
 function renderGallery(){
   const shown=state.filtered.slice(0,state.page*state.pageSize);
@@ -42,26 +120,59 @@ function renderGallery(){
   if(!shown.length){$("#empty").classList.remove("hidden");$("#loadMore").classList.add("hidden");return}
   $("#empty").classList.add("hidden");
   let last="";
-  shown.forEach((x,i)=>{
+  shown.forEach((x)=>{
     if(x.date!==last){const d=document.createElement("div");d.className="day";d.innerHTML=`<h3>${niceDate(x.date)}</h3><small>${state.filtered.filter(y=>y.date===x.date).length} item(ns)</small>`;$("#gallery").appendChild(d);last=x.date}
     const card=document.createElement("article");card.className="card";
-    const media=x.type.startsWith("video")?`<video src="${rawUrl(x.path)}" muted preload="metadata" playsinline></video>`:`<img src="${rawUrl(x.path)}" loading="lazy" alt="">`;
-    card.innerHTML=media+`<span class="type">${x.type.startsWith("video")?"▶ Vídeo":"▣ Foto"}</span><div class="name">${escapeHtml(x.name)}</div>`;
-    card.onclick=()=>openViewer(shown.indexOf(x),shown);$("#gallery").appendChild(card);
+    card.dataset.idx=state.filtered.indexOf(x);
+    card.innerHTML=`<div class="media-wrap">Carregando…</div><span class="type">${x.type.startsWith("video")?"▶ Vídeo":"▣ Foto"}</span><span class="uploader-tag">${escapeHtml(x.uploadedBy||"?")}</span><div class="name">${escapeHtml(x.name)}</div>`;
+    card.onclick=()=>openViewer(state.filtered.indexOf(x),state.filtered);
+    $("#gallery").appendChild(card);
+    mediaObserver.observe(card);
   });
   $("#loadMore").classList.toggle("hidden",shown.length>=state.filtered.length);
 }
-function openViewer(i,list){state.viewerList=list;state.current=i;$("#viewer").classList.remove("hidden");showViewer()}
-function showViewer(){
-  const x=state.viewerList[state.current],u=rawUrl(x.path);
-  $("#viewerContent").innerHTML=x.type.startsWith("video")?`<video src="${u}" controls autoplay playsinline></video>`:`<img src="${u}" alt="">`;
-  $("#viewerCaption").textContent=`${x.name} • ${niceDate(x.date)}`;
+async function openViewer(i,list){state.viewerList=list;state.current=i;$("#viewer").classList.remove("hidden");await showViewer()}
+async function showViewer(){
+  const x=state.viewerList[state.current];
+  $("#viewerContent").innerHTML="Carregando…";
+  try{
+    const url=await getDecryptedUrl(x);
+    $("#viewerContent").innerHTML=x.type.startsWith("video")?`<video src="${url}" controls autoplay playsinline></video>`:`<img src="${url}" alt="">`;
+  }catch(e){$("#viewerContent").innerHTML="Erro ao carregar o arquivo."}
+  $("#viewerCaption").textContent=`${x.name} • ${niceDate(x.date)} • enviado por ${x.uploadedBy||"?"}`;
 }
 function move(n){state.current=(state.current+n+state.viewerList.length)%state.viewerList.length;showViewer()}
 
+async function readConfigFile(){
+  // busca config.enc.json direto do raw do repositório (sem precisar de token)
+  const boot=JSON.parse(localStorage.getItem("albumBootstrap")||"null");
+  if(!boot)return null;
+  try{
+    const url=`https://raw.githubusercontent.com/${encodeURIComponent(boot.owner)}/${encodeURIComponent(boot.repo)}/${encodeURIComponent(boot.branch)}/config.enc.json`;
+    const r=await fetch(url);
+    if(!r.ok)return null;
+    const blob=await r.json();
+    const json=await decryptText(blob.data,blob.iv);
+    return JSON.parse(json);
+  }catch{return null}
+}
+async function writeConfigFile(c){
+  const enc=await encryptText(JSON.stringify(c));
+  const content=b64(new TextEncoder().encode(JSON.stringify(enc)));
+  let sha;
+  try{
+    const r=await api(`/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/config.enc.json?ref=${encodeURIComponent(c.branch)}`);
+    if(r.ok)sha=(await r.json()).sha;
+  }catch{}
+  const body={message:"album: salvar configuração criptografada",content,branch:c.branch};
+  if(sha)body.sha=sha;
+  const res=await api(`/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/config.enc.json`,{method:"PUT",body:JSON.stringify(body)});
+  if(!res.ok)throw Error((await res.json()).message||"Falha ao salvar configuração no repositório.");
+}
 async function readConfig(){
-  try{state.config=JSON.parse(sessionStorage.getItem("albumConfig")||"null")}catch{}
-  if(state.config)await loadGallery();else $("#settings").classList.remove("hidden");
+  const remote=await readConfigFile();
+  if(remote){state.config=remote;await loadGallery();return}
+  $("#settings").classList.remove("hidden");
 }
 async function putJson(items,sha){
   const c=cfg(),content=JSON.stringify(items,null,2),encoded=b64(new TextEncoder().encode(content));
@@ -75,14 +186,17 @@ async function uploadFile(file){
   const c=cfg(),now=new Date(),date=$("#dateInput").value||now.toISOString().slice(0,10);
   if(file.size>100*1024*1024)throw Error(`${file.name}: acima de 100 MB. GitHub bloqueia arquivos maiores no Git normal.`);
   const clean=file.name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^\w.\- ]+/g,"").trim().replace(/\s+/g,"-")||`arquivo-${Date.now()}`;
-  const path=`media/${date.slice(0,4)}/${date.slice(5,7)}/${date}/${Date.now()}-${clean}`;
-  const r=await file.arrayBuffer(),encoded=b64(r);
+  const path=`media/${date.slice(0,4)}/${date.slice(5,7)}/${date}/${Date.now()}-${clean}.enc`;
+  const raw=await file.arrayBuffer();
+  const {cipher,iv}=await encryptBuffer(raw);
+  const encoded=b64(cipher);
   const res=await api(`/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/${path.split("/").map(encodeURIComponent).join("/")}`,{method:"PUT",body:JSON.stringify({message:`album: adicionar ${clean}`,content:encoded,branch:c.branch})});
   if(!res.ok)throw Error(`${file.name}: ${(await res.json()).message||"falha no upload"}`);
-  state.items.push({name:file.name,path,date,type:file.type,bytes:file.size,uploadedAt:new Date().toISOString()});
+  state.items.push({name:file.name,path,date,type:file.type,bytes:file.size,iv,uploadedAt:new Date().toISOString(),uploadedBy:currentUser()});
   state.items.sort((a,b)=>b.date.localeCompare(a.date)||b.uploadedAt.localeCompare(a.uploadedAt));
 }
 async function uploadFiles(files){
+  if(!requireLogin())return;
   if(!cfg()){toast("Configure o GitHub primeiro.");$("#settings").classList.remove("hidden");return}
   const arr=[...files];if(!arr.length)return;
   $("#uploadBtn").disabled=true;toast(`Enviando ${arr.length} arquivo(s)...`);
@@ -95,14 +209,25 @@ async function uploadFiles(files){
   finally{$("#uploadBtn").disabled=false;$("#fileInput").value=""}
 }
 
-$("#settingsBtn").onclick=()=>{$("#settings").classList.remove("hidden");const c=cfg();if(c){$("#owner").value=c.owner;$("#repo").value=c.repo;$("#branch").value=c.branch}}
+$("#loginBtn").onclick=()=>{if(doLogin($("#loginPassword").value))readConfig()};
+$("#loginPassword").addEventListener("keydown",e=>{if(e.key==="Enter"&&doLogin($("#loginPassword").value))readConfig()});
+$("#logoutBtn").onclick=()=>{sessionStorage.removeItem("albumUser");state.user=null;location.reload()};
+
+$("#settingsBtn").onclick=()=>{if(!requireLogin())return;$("#settings").classList.remove("hidden");const c=cfg();if(c){$("#owner").value=c.owner;$("#repo").value=c.repo;$("#branch").value=c.branch}}
 $("#settingsClose").onclick=()=>$("#settings").classList.add("hidden");
 $("#saveSettings").onclick=async()=>{
   const c={owner:$("#owner").value.trim(),repo:$("#repo").value.trim(),branch:$("#branch").value.trim()||"main",token:$("#token").value.trim()};
   if(!c.owner||!c.repo||!c.token)return toast("Preencha usuário, repositório e token.");
-  saveCfg(c);$("#settings").classList.add("hidden");await loadGallery();
+  state.config=c;
+  try{
+    await writeConfigFile(c);
+    saveCfg(c);
+    $("#settings").classList.add("hidden");
+    toast("Configuração salva no repositório.");
+    await loadGallery();
+  }catch(e){toast(e.message)}
 };
-$("#uploadBtn").onclick=()=>$("#fileInput").click();
+$("#uploadBtn").onclick=()=>{if(!requireLogin())return;$("#fileInput").click()};
 $("#fileInput").onchange=e=>uploadFiles(e.target.files);
 $("#searchInput").oninput=apply;
 $("#dateInput").onchange=apply;
@@ -111,6 +236,10 @@ $("#todayBtn").onclick=()=>{$("#dateInput").value=new Date().toISOString().slice
 $("#loadMore").onclick=()=>{state.page++;renderGallery()};
 $("#viewerClose").onclick=()=>{$("#viewer").classList.add("hidden");$("#viewerContent").innerHTML=""};
 $("#prevBtn").onclick=()=>move(-1);$("#nextBtn").onclick=()=>move(1);
+$("#uploaderFilter").querySelectorAll(".filter-btn").forEach(b=>b.onclick=()=>{
+  $("#uploaderFilter").querySelectorAll(".filter-btn").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active");state.uploaderWho=b.dataset.who;apply();
+});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"){$("#viewer").classList.add("hidden");$("#settings").classList.add("hidden")}if(!$("#viewer").classList.contains("hidden")){if(e.key==="ArrowLeft")move(-1);if(e.key==="ArrowRight")move(1)}});
 
-readConfig();
+if(!requireLogin()){/* aguardando login */}else{readConfig()}

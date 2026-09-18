@@ -15,7 +15,11 @@
       <h1 id="albumTitle">Meu Álbum</h1>
       <p id="albumSubtitle">Fotos e vídeos organizados por data.</p>
     </div>
-    <button class="ghost" id="settingsBtn">⚙ Configurar</button>
+    <div class="topbar-actions">
+      <span class="user-badge hidden" id="userBadge"></span>
+      <button class="ghost hidden" id="logoutBtn">Sair</button>
+      <button class="ghost" id="settingsBtn">⚙ Configurar</button>
+    </div>
   </header>
 
   <main class="container">
@@ -43,6 +47,12 @@
       <input id="fileInput" type="file" accept="image/*,video/*" multiple hidden>
     </section>
 
+    <section class="filter-group" id="uploaderFilter">
+      <button class="filter-btn active" data-who="">Todos</button>
+      <button class="filter-btn" data-who="Jurandir">Upado por Jurandir</button>
+      <button class="filter-btn" data-who="Mayanne">Upado por Mayanne</button>
+    </section>
+
     <section class="timeline-nav" id="timelineNav"></section>
     <section id="gallery" class="gallery"></section>
     <div id="empty" class="empty hidden">
@@ -52,6 +62,18 @@
     </div>
     <button id="loadMore" class="load-more hidden">Carregar mais</button>
   </main>
+
+  <div class="modal hidden" id="login">
+    <div class="panel">
+      <h2>Entrar</h2>
+      <p class="muted">Álbum privado de Jurandir &amp; Mayanne. Digite sua senha para entrar.</p>
+      <label>Senha
+        <input id="loginPassword" type="password" placeholder="Sua senha" autocomplete="current-password">
+      </label>
+      <div id="loginError" class="warning hidden">Senha incorreta.</div>
+      <button class="primary wide" id="loginBtn">Entrar</button>
+    </div>
+  </div>
 
   <div class="modal hidden" id="viewer">
     <button class="modal-close" id="viewerClose">×</button>
