@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#09090b">
+  <title>Meu Álbum</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="bg"></div>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">GITHUB ALBUM</div>
+      <h1 id="albumTitle">Meu Álbum</h1>
+      <p id="albumSubtitle">Fotos e vídeos organizados por data.</p>
+    </div>
+    <button class="ghost" id="settingsBtn">⚙ Configurar</button>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <div class="hero-copy">
+        <span class="pill">● ONLINE</span>
+        <h2>Suas memórias,<br><span>do seu jeito.</span></h2>
+        <p>Pesquise por data, navegue pela linha do tempo ou envie novas fotos e vídeos diretamente para o seu repositório.</p>
+      </div>
+      <div class="hero-stat">
+        <strong id="totalCount">0</strong>
+        <span>itens</span>
+      </div>
+    </section>
+
+    <section class="toolbar">
+      <label class="search">
+        <span>⌕</span>
+        <input id="searchInput" type="search" placeholder="Pesquisar por nome ou data...">
+      </label>
+      <input id="dateInput" class="date" type="date">
+      <button class="btn" id="todayBtn">Hoje</button>
+      <button class="btn" id="clearBtn">Limpar</button>
+      <button class="primary" id="uploadBtn">＋ Adicionar</button>
+      <input id="fileInput" type="file" accept="image/*,video/*" multiple hidden>
+    </section>
+
+    <section class="timeline-nav" id="timelineNav"></section>
+    <section id="gallery" class="gallery"></section>
+    <div id="empty" class="empty hidden">
+      <div class="empty-icon">✦</div>
+      <h3>Nenhuma memória encontrada</h3>
+      <p>Tente outra data ou adicione novos arquivos.</p>
+    </div>
+    <button id="loadMore" class="load-more hidden">Carregar mais</button>
+  </main>
+
+  <div class="modal hidden" id="viewer">
+    <button class="modal-close" id="viewerClose">×</button>
+    <button class="viewer-arrow left" id="prevBtn">‹</button>
+    <div class="viewer-content" id="viewerContent"></div>
+    <button class="viewer-arrow right" id="nextBtn">›</button>
+    <div class="viewer-caption" id="viewerCaption"></div>
+  </div>
+
+  <div class="modal hidden" id="settings">
+    <div class="panel">
+      <button class="modal-close" id="settingsClose">×</button>
+      <h2>Configuração</h2>
+      <p class="muted">Esses dados ficam somente nesta sessão do navegador. O token não é salvo no código do site.</p>
+      <label>Usuário/organização
+        <input id="owner" placeholder="seu-usuario">
+      </label>
+      <label>Repositório
+        <input id="repo" placeholder="meu-album">
+      </label>
+      <label>Branch
+        <input id="branch" value="main">
+      </label>
+      <label>Token Fine-grained
+        <input id="token" type="password" placeholder="github_pat_...">
+      </label>
+      <div class="warning">⚠ O repositório e os arquivos publicados pelo GitHub Pages serão públicos. Nunca use um token com permissões maiores que o necessário.</div>
+      <button class="primary wide" id="saveSettings">Salvar e conectar</button>
+      <p class="help">Permissão necessária: <b>Contents → Read and write</b> somente neste repositório.</p>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
