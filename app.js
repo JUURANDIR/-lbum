@@ -1,976 +1,675 @@
-/* =========================================================
-   Álbum Jurandir & Mayanne — app.js (v15)
-   ========================================================= */
-(function(){
-"use strict";
-
-const VERSION = "15";
-document.title = "Meu Álbum";
-
-window.addEventListener("error", e => {
-  console.error("[album] erro global:", e.error || e.message);
-  try{
-    const t = document.getElementById("toast");
-    if(t){
-      t.textContent = "Erro: " + (e.message || "desconhecido");
-      t.classList.add("show");
-      clearTimeout(window.__t);
-      window.__t = setTimeout(() => t.classList.remove("show"), 5000);
-    }
-  }catch{}
-});
-
-const $ = s => {
-  const el = document.querySelector(s);
-  if(!el) console.warn("[album] elemento ausente:", s);
-  return el;
-};
-
-function on(sel, ev, fn){
-  const el = typeof sel === "string" ? document.querySelector(sel) : sel;
-  if(!el){ console.warn("[album] listener ignorado:", sel); return null; }
-  el.addEventListener(ev, fn);
-  return el;
-}
-
-function ready(fn){
-  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", fn);
-  else fn();
-}
-
-console.log("[album] app.js v" + VERSION + " carregando...");
-
-const state = {
-  items: [],
-  filtered: [],
-  page: 0,
-  pageSize: 60,
-  current: 0,
-  config: null,
-  user: null,
-  uploaderWho: "",
-  gallerySha: null,
-  viewerList: []
-};
-window.__album = state;
-
-const DEFAULT_OWNER  = "JUURANDIR";
-const DEFAULT_REPO   = "-lbum";
-const DEFAULT_BRANCH = "main";
+const $=s=>document.querySelector(s);
+const state={items:[],filtered:[],page:0,pageSize:60,current:0,config:null,user:null,
+  uploaderWho:"",catFilter:"",dateMode:"date",locOnly:false,
+  categories:[],categoriesSha:null,gallerySha:null,
+  selectMode:false,selected:new Set(),pendingFiles:null,
+  categoryModalMode:"single",categoryModalTarget:null,captionTarget:null,shareTarget:null,
+  deferredInstall:null};
+const DEFAULT_OWNER="JUURANDIR",DEFAULT_REPO="albumjuemay",DEFAULT_BRANCH="main";
 
 /* ---------- login ---------- */
-const USERS = {Jurandir: "Jurandir", Mayanne: "Mayanne"};
-
-function currentUser(){ return state.user || sessionStorage.getItem("albumUser"); }
-
+const USERS={Jurandir:"Jurandir",Mayanne:"Mayanne"};
+function currentUser(){return state.user||sessionStorage.getItem("albumUser")}
 function doLogin(pass){
-  const found = Object.keys(USERS).find(name => USERS[name] === pass);
-  if(!found){
-    const err = $("#loginError");
-    if(err) err.classList.remove("hidden");
-    return false;
-  }
-  state.user = found;
-  try{ sessionStorage.setItem("albumUser", found); }catch{}
-  $("#login")?.classList.add("hidden");
-  $("#loginError")?.classList.add("hidden");
-  const badge = $("#userBadge");
-  if(badge){ badge.textContent = "Olá, " + found; badge.classList.remove("hidden"); }
-  $("#logoutBtn")?.classList.remove("hidden");
-  document.body.classList.add("logged-in");
+  const found=Object.keys(USERS).find(name=>USERS[name]===pass);
+  if(!found){$("#loginError").classList.remove("hidden");return false}
+  state.user=found;sessionStorage.setItem("albumUser",found);
+  $("#login").classList.add("hidden");$("#loginError").classList.add("hidden");
+  $("#userBadge").textContent="Olá, "+found;$("#userBadge").classList.remove("hidden");
+  logEvent("login",found,"entrou no álbum");
   return true;
 }
-
 function requireLogin(){
-  let u;
-  try{ u = currentUser(); }catch{ u = null; }
-  if(!u){
-    $("#login")?.classList.remove("hidden");
-    return false;
-  }
-  state.user = u;
-  const badge = $("#userBadge");
-  if(badge){ badge.textContent = "Olá, " + u; badge.classList.remove("hidden"); }
-  $("#logoutBtn")?.classList.remove("hidden");
-  document.body.classList.add("logged-in");
+  const u=currentUser();
+  if(!u){$("#login").classList.remove("hidden");return false}
+  state.user=u;$("#userBadge").textContent="Olá, "+u;$("#userBadge").classList.remove("hidden");
   return true;
 }
 
 /* ---------- criptografia ---------- */
-const ENC_PASSPHRASE = "jurandir-e-mayanne-album-secreto-v1";
-let cryptoKeyPromise = null;
-
+const ENC_PASSPHRASE="jurandir-e-mayanne-album-secreto-v1";
+let cryptoKeyPromise=null;
 function getKey(){
-  if(!cryptoKeyPromise){
-    cryptoKeyPromise = crypto.subtle.digest("SHA-256", new TextEncoder().encode(ENC_PASSPHRASE))
-      .then(hash => crypto.subtle.importKey("raw", hash, {name: "AES-GCM"}, false, ["encrypt", "decrypt"]));
-  }
+  if(!cryptoKeyPromise)cryptoKeyPromise=(async()=>{
+    const hash=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(ENC_PASSPHRASE));
+    return crypto.subtle.importKey("raw",hash,{name:"AES-GCM"},false,["encrypt","decrypt"]);
+  })();
   return cryptoKeyPromise;
 }
-
 async function encryptBuffer(buf){
-  const key = await getKey();
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const cipher = await crypto.subtle.encrypt({name: "AES-GCM", iv}, key, buf);
-  return {cipher, iv: b64(iv.buffer)};
+  const key=await getKey(),iv=crypto.getRandomValues(new Uint8Array(12));
+  const cipher=await crypto.subtle.encrypt({name:"AES-GCM",iv},key,buf);
+  return {cipher,iv:b64(iv.buffer)};
 }
-
-async function decryptBuffer(buf, ivB64){
-  const key = await getKey();
-  const iv = Uint8Array.from(atob(ivB64), c => c.charCodeAt(0));
-  return crypto.subtle.decrypt({name: "AES-GCM", iv}, key, buf);
+async function decryptBuffer(buf,ivB64){
+  const key=await getKey(),iv=Uint8Array.from(atob(ivB64),c=>c.charCodeAt(0));
+  return crypto.subtle.decrypt({name:"AES-GCM",iv},key,buf);
 }
-
 async function encryptText(str){
-  const {cipher, iv} = await encryptBuffer(new TextEncoder().encode(str));
-  return {data: b64(cipher), iv};
+  const {cipher,iv}=await encryptBuffer(new TextEncoder().encode(str));
+  return {data:b64(cipher),iv};
 }
-
-async function decryptText(data, iv){
-  const cipherBuf = Uint8Array.from(atob(data), c => c.charCodeAt(0)).buffer;
-  const plainBuf = await decryptBuffer(cipherBuf, iv);
+async function decryptText(data,iv){
+  const cipherBuf=Uint8Array.from(atob(data),c=>c.charCodeAt(0)).buffer;
+  const plainBuf=await decryptBuffer(cipherBuf,iv);
   return new TextDecoder().decode(plainBuf);
 }
-
-function guessMime(name, fallback){
-  if(fallback) return fallback;
-  const ext = (String(name || "").split(".").pop() || "").toLowerCase();
-  const map = {
-    jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif",
-    webp: "image/webp", heic: "image/heic", heif: "image/heic",
-    mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm", m4v: "video/mp4"
-  };
-  return map[ext] || "application/octet-stream";
+function guessMime(name,fallback){
+  if(fallback)return fallback;
+  const ext=(name.split(".").pop()||"").toLowerCase();
+  const map={jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png",gif:"image/gif",webp:"image/webp",heic:"image/heic",mp4:"video/mp4",mov:"video/quicktime",webm:"video/webm",m4v:"video/mp4"};
+  return map[ext]||"application/octet-stream";
 }
+const blobUrlCache=new Map();
 
-/* ---------- helpers ---------- */
-function b64(buf){
-  let s = "";
-  const a = new Uint8Array(buf);
-  for(let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode.apply(null, a.subarray(i, i + 0x8000));
-  return btoa(s);
+/* ---------- utils ---------- */
+function toast(msg){const e=$("#toast");e.textContent=msg;e.classList.add("show");clearTimeout(window.__t);window.__t=setTimeout(()=>e.classList.remove("show"),3200)}
+function cfg(){return state.config}
+function saveCfg(c){state.config=c;localStorage.setItem("albumConfig",JSON.stringify(c))}
+function api(path,opt={}){const c=cfg();if(!c?.token)throw Error("Configure o GitHub primeiro.");return fetch("https://api.github.com"+path,{...opt,headers:{Accept:"application/vnd.github+json",Authorization:"Bearer "+c.token,"X-GitHub-Api-Version":"2026-03-10",...(opt.headers||{})}})}
+function b64(buf){let s="";const a=new Uint8Array(buf);for(let i=0;i<a.length;i+=0x8000)s+=String.fromCharCode(...a.subarray(i,i+0x8000));return btoa(s)}
+function niceDate(d){if(!d)return"";return new Intl.DateTimeFormat("pt-BR",{dateStyle:"full"}).format(new Date(d+"T12:00:00"))}
+function niceDateTime(iso){try{return new Intl.DateTimeFormat("pt-BR",{dateStyle:"short",timeStyle:"short"}).format(new Date(iso))}catch{return iso}}
+function escapeHtml(s){return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
+function fmtBytes(n){if(!n)return"—";const u=["B","KB","MB","GB"];let i=0;while(n>=1024&&i<u.length-1){n/=1024;i++}return n.toFixed(1)+" "+u[i]}
+
+/* ---------- leitura/escrita genérica de arquivos JSON no repositório ---------- */
+async function readJsonFile(path){
+  const c=cfg();
+  const r=await api(`/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/${path}?ref=${encodeURIComponent(c.branch)}`);
+  if(r.ok){const x=await r.json();const bytes=Uint8Array.from(atob(x.content.replace(/\n/g,"")),ch=>ch.charCodeAt(0));return{data:JSON.parse(new TextDecoder().decode(bytes)),sha:x.sha}}
+  if(r.status===404)return{data:null,sha:null};
+  const detail=await r.json().catch(()=>({}));
+  throw Error(`Falha ao ler ${path} (HTTP ${r.status}: ${detail.message||"erro desconhecido"}).`);
 }
-
-function niceDate(d){
-  if(!d) return "";
-  const dt = new Date(d + "T12:00:00");
-  if(isNaN(dt.getTime())) return String(d);
-  try{ return new Intl.DateTimeFormat("pt-BR", {dateStyle: "full"}).format(dt); }
-  catch{ return String(d); }
-}
-
-function escapeHtml(s){
-  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
-}
-
-function cfg(){ return state.config; }
-function saveCfg(c){
-  state.config = c;
-  try{ localStorage.setItem("albumConfig", JSON.stringify(c)); }catch{}
-}
-
-function toast(msg){
-  const e = document.getElementById("toast");
-  if(!e) return;
-  e.textContent = msg;
-  e.classList.add("show");
-  clearTimeout(window.__t);
-  window.__t = setTimeout(() => e.classList.remove("show"), 3200);
-}
-
-/* ---------- API ---------- */
-function api(path, opt){
-  opt = opt || {};
-  const c = cfg();
-  if(!c || !c.token) throw Error("Configure o GitHub primeiro.");
-  return fetch("https://api.github.com" + path, {
-    method: opt.method || "GET",
-    body: opt.body,
-    cache: "no-store",
-    headers: Object.assign({
-      Accept: "application/vnd.github+json",
-      Authorization: "Bearer " + c.token,
-      "X-GitHub-Api-Version": "2022-11-28"
-    }, opt.headers || {})
-  });
-}
-
-function apiUpload(path, bodyString, onProgress){
-  return new Promise((resolve, reject) => {
-    const c = cfg();
-    if(!c || !c.token){ reject(Error("Configure o GitHub primeiro.")); return; }
-    const xhr = new XMLHttpRequest();
-    xhr.open("PUT", "https://api.github.com" + path);
-    xhr.setRequestHeader("Accept", "application/vnd.github+json");
-    xhr.setRequestHeader("Authorization", "Bearer " + c.token);
-    xhr.setRequestHeader("X-GitHub-Api-Version", "2022-11-28");
-    xhr.setRequestHeader("Content-Type", "application/json");
-    if(xhr.upload && onProgress){
-      xhr.upload.onprogress = e => { if(e.lengthComputable) onProgress(e.loaded / e.total); };
-    }
-    xhr.onload = () => {
-      let data = null;
-      try{ data = JSON.parse(xhr.responseText); }catch{}
-      resolve({ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, data: data || {}});
-    };
-    xhr.onerror = () => reject(Error("Falha de rede no upload."));
-    xhr.send(bodyString);
-  });
-}
-
-function enc(s){ return encodeURIComponent(s); }
-
-function rawUrl(path){
-  const c = cfg();
-  return "https://raw.githubusercontent.com/" + enc(c.owner) + "/" + enc(c.repo) + "/" + enc(c.branch) + "/" +
-    String(path).split("/").map(enc).join("/");
-}
-
-function contentsPath(extra){
-  const c = cfg();
-  return "/repos/" + enc(c.owner) + "/" + enc(c.repo) + "/contents/" + extra;
-}
-
-/* ---------- fila de download ---------- */
-const MAX_CONCURRENT = 6;
-let activeDownloads = 0;
-const downloadQueue = [];
-
-function scheduleDownload(fn){
-  return new Promise((resolve, reject) => {
-    downloadQueue.push({fn, resolve, reject});
-    pumpDownloads();
-  });
-}
-
-function pumpDownloads(){
-  while(activeDownloads < MAX_CONCURRENT && downloadQueue.length){
-    const task = downloadQueue.shift();
-    activeDownloads++;
-    Promise.resolve()
-      .then(task.fn)
-      .then(task.resolve, task.reject)
-      .finally(() => { activeDownloads--; pumpDownloads(); });
+async function writeJsonFile(path,data,sha,message){
+  const c=cfg();
+  const content=b64(new TextEncoder().encode(JSON.stringify(data,null,2)));
+  const body={message,content,branch:c.branch};
+  if(sha)body.sha=sha;
+  const res=await api(`/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/${path}`,{method:"PUT",body:JSON.stringify(body)});
+  if(!res.ok){
+    if(res.status===409){const fresh=await readJsonFile(path);return writeJsonFile(path,data,fresh.sha,message)}
+    throw Error((await res.json().catch(()=>({}))).message||`Falha ao salvar ${path}.`);
   }
+  return(await res.json()).content.sha;
 }
+async function putGallery(){state.gallerySha=await writeJsonFile("gallery.json",state.items,state.gallerySha,"album: atualizar catálogo")}
+async function putCategories(){state.categoriesSha=await writeJsonFile("categories.json",state.categories,state.categoriesSha,"album: atualizar categorias")}
 
-/* ---------- mídia ---------- */
-const urlCache = new Map();
-const pendingMap = new Map();
-
-async function fetchEncryptedBuffer(item){
+/* ---------- histórico ---------- */
+async function logEvent(action,who,details){
+  if(!cfg())return;
   try{
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 6000);
-    const r = await fetch(rawUrl(item.path), {signal: ctrl.signal});
-    clearTimeout(timer);
-    if(r.ok){
-      const buf = await r.arrayBuffer();
-      const lenHeader = r.headers.get("content-length");
-      const expected = lenHeader ? parseInt(lenHeader, 10) : 0;
-      if(buf.byteLength >= 16 && (!expected || buf.byteLength === expected)){
-        return buf;
+    const {data,sha}=await readJsonFile("history.json");
+    const list=data||[];
+    list.unshift({ts:new Date().toISOString(),who:who||currentUser()||"?",action,details:details||""});
+    while(list.length>500)list.pop();
+    await writeJsonFile("history.json",list,sha,"album: histórico");
+  }catch{/* histórico é best-effort, nunca trava a ação principal */}
+}
+async function loadHistory(){
+  $("#historyList").innerHTML="Carregando…";
+  try{
+    const {data}=await readJsonFile("history.json");
+    const list=data||[];
+    if(!list.length){$("#historyList").innerHTML='<p class="muted-sm">Nada por aqui ainda.</p>';return}
+    $("#historyList").innerHTML=list.map(h=>`<div class="history-item"><span class="who">${escapeHtml(h.who)}</span> ${escapeHtml(actionLabel(h.action))} ${escapeHtml(h.details||"")}<span class="when">${niceDateTime(h.ts)}</span></div>`).join("");
+  }catch(e){$("#historyList").innerHTML=`<p class="muted-sm">${escapeHtml(e.message)}</p>`}
+}
+function actionLabel(a){return({login:"entrou",upload:"enviou",delete:"excluiu",caption:"editou a legenda de",category:"categorizou",share_create:"compartilhou",share_revoke:"revogou o link de"}[a]||a)}
+
+/* ---------- EXIF (best-effort, só JPEG) ---------- */
+function parseExif(buf){
+  try{
+    const view=new DataView(buf);
+    if(view.getUint16(0)!==0xFFD8)return null;
+    let offset=2;
+    while(offset<view.byteLength){
+      if(view.getUint16(offset)!==0xFFE1){
+        const size=view.getUint16(offset+2);
+        if(view.getUint16(offset)===0xFFDA||size<2)break;
+        offset+=2+size;continue;
       }
-      console.warn("[album] truncado no CDN", buf.byteLength, "/", expected, "→ API");
-    }
-  }catch(e){}
-
-  const r = await api(contentsPath(String(item.path).split("/").map(enc).join("/")) + "?ref=" + enc(cfg().branch), {
-    headers: {Accept: "application/vnd.github.raw"}
-  });
-  if(!r.ok) throw Error("Falha ao baixar arquivo (HTTP " + r.status + ").");
-  const buf = await r.arrayBuffer();
-  if(buf.byteLength < 16) throw Error("Arquivo corrompido.");
-  return buf;
-}
-
-function getImageUrl(item){
-  if(urlCache.has(item.path)) return Promise.resolve(urlCache.get(item.path));
-  if(pendingMap.has(item.path)){
-    return new Promise((resolve, reject) => pendingMap.get(item.path).push({resolve, reject}));
-  }
-  return new Promise((resolve, reject) => {
-    pendingMap.set(item.path, [{resolve, reject}]);
-    scheduleDownload(async () => {
-      try{
-        const cipherBuf = await fetchEncryptedBuffer(item);
-        const plainBuf = await decryptBuffer(cipherBuf, item.iv);
-        const blob = new Blob([plainBuf], {type: guessMime(item.name, item.type)});
-        const url = URL.createObjectURL(blob);
-        urlCache.set(item.path, url);
-        const subs = pendingMap.get(item.path) || [];
-        pendingMap.delete(item.path);
-        subs.forEach(s => s.resolve(url));
-      }catch(e){
-        const subs = pendingMap.get(item.path) || [];
-        pendingMap.delete(item.path);
-        subs.forEach(s => s.reject(e));
+      const start=offset+4;
+      if(view.getUint32(start)!==0x45786966)return null; // "Exif"
+      const tiff=start+6;
+      const little=view.getUint16(tiff)===0x4949;
+      const g16=o=>view.getUint16(o,little),g32=o=>view.getUint32(o,little);
+      const ifd0=tiff+g32(tiff+4);
+      const entries={};
+      function readIFD(ifdOffset){
+        const n=g16(ifdOffset);
+        const out={};
+        for(let i=0;i<n;i++){
+          const e=ifdOffset+2+i*12;
+          const tag=g16(e),type=g16(e+2),count=g32(e+4);
+          const size=({1:1,2:1,3:2,4:4,5:8,9:4,10:8})[type]||4;
+          const totalSize=size*count;
+          const valOffset=totalSize>4?tiff+g32(e+8):e+8;
+          out[tag]={type,count,valOffset,entryOffset:e+8};
+        }
+        return out;
       }
-    });
-  });
-}
-
-function revokeImage(path){
-  const u = urlCache.get(path);
-  if(u){ try{ URL.revokeObjectURL(u); }catch{} urlCache.delete(path); }
-  pendingMap.delete(path);
-}
-
-/* ---------- imagem totalmente pronta ---------- */
-function loadImageElement(url){
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = async () => {
-      try{ if(img.decode) await img.decode(); }catch(_){}
-      resolve(img);
-    };
-    img.onerror = () => reject(Error("imagem inválida"));
-    img.src = url;
-    if(img.complete && img.naturalWidth > 0){
-      (async () => {
-        try{ if(img.decode) await img.decode(); }catch(_){}
-        resolve(img);
-      })();
+      const ifd0Entries=readIFD(ifd0);
+      let takenAt=null,lat=null,lon=null;
+      if(ifd0Entries[0x8769]){
+        const expOffset=tiff+g32(ifd0Entries[0x8769].entryOffset);
+        const exif=readIFD(expOffset);
+        const dt=exif[0x9003]||exif[0x9004];
+        if(dt){
+          let s="";for(let i=0;i<19;i++)s+=String.fromCharCode(view.getUint8(dt.valOffset+i));
+          const m=s.match(/(\d{4}):(\d{2}):(\d{2})/);
+          if(m)takenAt=`${m[1]}-${m[2]}-${m[3]}`;
+        }
+      }
+      if(ifd0Entries[0x8825]){
+        const gpsOffset=tiff+g32(ifd0Entries[0x8825].entryOffset);
+        const gps=readIFD(gpsOffset);
+        function rational3(o){
+          const vals=[];
+          for(let i=0;i<3;i++){const num=g32(o+i*8),den=g32(o+i*8+4);vals.push(den?num/den:0)}
+          return vals[0]+vals[1]/60+vals[2]/3600;
+        }
+        if(gps[2]&&gps[4]){
+          const latOff=tiff+g32(gps[2].entryOffset),lonOff=tiff+g32(gps[4].entryOffset);
+          lat=rational3(latOff);lon=rational3(lonOff);
+          const latRefByte=gps[1]?view.getUint8(gps[1].entryOffset):78;
+          const lonRefByte=gps[3]?view.getUint8(gps[3].entryOffset):69;
+          if(String.fromCharCode(latRefByte)==="S")lat=-lat;
+          if(String.fromCharCode(lonRefByte)==="W")lon=-lon;
+        }
+      }
+      return{takenAt,lat,lon};
     }
-  });
+    return null;
+  }catch{return null}
 }
 
-/* =========================================================
-   MINIATURA EM CANVAS  —  impede o browser de pintar parcial.
-   Canvas é um bitmap síncrono: ou está pronto, ou não existe.
-   ========================================================= */
-const THUMB_SIZE = 640;   // px do bitmap interno da miniatura
-
-async function buildThumbCanvas(url){
-  const img = await loadImageElement(url);
-  const iw = img.naturalWidth | 0;
-  const ih = img.naturalHeight | 0;
-  if(!iw || !ih) throw Error("dimensões inválidas");
-
-  const canvas = document.createElement("canvas");
-  canvas.width = THUMB_SIZE;
-  canvas.height = THUMB_SIZE;
-  canvas.className = "thumb-canvas";
-
-  const ctx = canvas.getContext("2d");
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-
-  // cover-fit: escala para preencher o quadrado, corta o excesso
-  const scale = Math.max(THUMB_SIZE / iw, THUMB_SIZE / ih);
-  const dw = iw * scale;
-  const dh = ih * scale;
-  const dx = (THUMB_SIZE - dw) / 2;
-  const dy = (THUMB_SIZE - dh) / 2;
-  ctx.drawImage(img, dx, dy, dw, dh);
-
-  return canvas;
+/* ---------- arquivo criptografado (blob via API, evita CORS do raw) ---------- */
+async function getFileSha(item){
+  if(item.sha)return item.sha;
+  const c=cfg();
+  const r=await api(`/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/${item.path.split("/").map(encodeURIComponent).join("/")}?ref=${encodeURIComponent(c.branch)}`);
+  if(!r.ok)throw Error(`Arquivo não encontrado no repositório (HTTP ${r.status}).`);
+  const meta=await r.json();item.sha=meta.sha;return meta.sha;
+}
+async function getDecryptedUrl(item){
+  if(blobUrlCache.has(item.path))return blobUrlCache.get(item.path);
+  const c=cfg();
+  const sha=await getFileSha(item);
+  const r=await api(`/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/git/blobs/${sha}`);
+  if(!r.ok)throw Error(`Falha ao baixar arquivo (HTTP ${r.status}).`);
+  const blob=await r.json();
+  const cipherBuf=Uint8Array.from(atob(blob.content.replace(/\n/g,"")),ch=>ch.charCodeAt(0)).buffer;
+  const plainBuf=await decryptBuffer(cipherBuf,item.iv);
+  const url=URL.createObjectURL(new Blob([plainBuf],{type:guessMime(item.name,item.type)}));
+  blobUrlCache.set(item.path,url);
+  return url;
 }
 
-/* ---------- galeria ---------- */
+/* ---------- carregar dados ---------- */
 async function loadGallery(){
-  const c = cfg();
-  if(!c){ render(); return; }
+  const c=cfg();
+  if(!c){render();return}
   try{
-    const r = await api(contentsPath("gallery.json") + "?ref=" + enc(c.branch));
-    if(r.ok){
-      const x = await r.json();
-      const bytes = Uint8Array.from(atob(String(x.content || "").replace(/\n/g, "")), ch => ch.charCodeAt(0));
-      state.gallerySha = x.sha;
-      try{ state.items = JSON.parse(new TextDecoder().decode(bytes)); }
-      catch{ state.items = []; toast("gallery.json corrompido — reiniciando."); }
-    } else if(r.status === 404){
-      state.items = [];
-      state.gallerySha = null;
-    } else {
-      const detail = await r.json().catch(() => ({}));
-      throw Error("Erro ao ler gallery.json (HTTP " + r.status + ": " + (detail.message || "?") + ").");
-    }
-    state.items.sort((a, b) =>
-      String(b.date || "").localeCompare(String(a.date || "")) ||
-      String(b.uploadedAt || "").localeCompare(String(a.uploadedAt || ""))
-    );
+    const {data,sha}=await readJsonFile("gallery.json");
+    state.items=data||[];state.gallerySha=sha;
+    state.items.sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.uploadedAt||"").localeCompare(a.uploadedAt||""));
+    const cats=await readJsonFile("categories.json");
+    state.categories=cats.data||[];state.categoriesSha=cats.sha;
+    fillCategorySelect();
     render();
-  }catch(e){ toast(e.message); render(); }
+  }catch(e){toast(e.message);render()}
+}
+function fillCategorySelect(){
+  $("#categorySelect").innerHTML='<option value="">Todas</option>'+state.categories.map(cat=>`<option value="${escapeHtml(cat)}">${escapeHtml(cat)}</option>`).join("");
 }
 
+/* ---------- filtro/render ---------- */
 function apply(){
-  const inp = document.getElementById("searchInput");
-  const dt = document.getElementById("dateInput");
-  const q = inp ? inp.value.trim().toLowerCase() : "";
-  const d = dt ? dt.value : "";
-  const who = state.uploaderWho;
-  state.filtered = state.items.filter(x => {
-    if(d && x.date !== d) return false;
-    if(who && x.uploadedBy !== who) return false;
+  const q=$("#searchInput").value.trim().toLowerCase(),d=$("#dateInput").value,who=state.uploaderWho;
+  const dateField=state.dateMode;
+  state.filtered=state.items.filter(x=>{
+    if(state.catFilter&&!(x.categories||[]).includes(state.catFilter))return false;
+    if(who&&x.uploadedBy!==who)return false;
+    if(state.locOnly&&!(x.lat&&x.lon))return false;
+    if(d){const val=dateField==="uploadedAt"?(x.uploadedAt||"").slice(0,10):(x.date||"");if(val!==d)return false}
     if(q){
-      const name = String(x.name || "").toLowerCase();
-      const date = String(x.date || "");
-      const human = niceDate(x.date).toLowerCase();
-      if(name.indexOf(q) < 0 && date.indexOf(q) < 0 && human.indexOf(q) < 0) return false;
+      const hay=[x.name,x.date,x.caption,...(x.categories||[])].filter(Boolean).join(" ").toLowerCase();
+      if(!hay.includes(q)&&!niceDate(x.date).toLowerCase().includes(q))return false;
     }
     return true;
   });
-  state.page = 1;
-  renderGallery();
+  state.page=1;renderGallery();updateFilterSummary();
 }
-
+function updateFilterSummary(){
+  const parts=[];
+  if(state.uploaderWho)parts.push(state.uploaderWho);
+  if(state.catFilter)parts.push(state.catFilter);
+  if(state.locOnly)parts.push("com localização");
+  if($("#dateInput").value)parts.push(niceDate($("#dateInput").value));
+  $("#filterSummary").textContent=parts.length?parts.join(" · "):"tudo";
+}
 function render(){
-  const tc = document.getElementById("totalCount");
-  if(tc) tc.textContent = state.items.length;
-  apply();
-  buildTimeline();
+  $("#totalCount").textContent=state.items.length;
+  apply();buildTimeline();
 }
-
 function buildTimeline(){
-  const nav = document.getElementById("timelineNav");
-  if(!nav) return;
-  const groups = Array.from(new Set(state.items.map(x => String(x.date || "").slice(0, 7)).filter(Boolean)));
-  let html = "";
-  groups.forEach(m => {
-    let label = m;
-    try{ label = new Intl.DateTimeFormat("pt-BR", {month: "long", year: "numeric"}).format(new Date(m + "-01T12:00:00")); }catch{}
-    html += '<button type="button" data-month="' + m + '">' + label + '</button>';
-  });
-  nav.innerHTML = html;
-  nav.querySelectorAll("button").forEach(b => {
-    b.addEventListener("click", () => {
-      const si = document.getElementById("searchInput");
-      const di = document.getElementById("dateInput");
-      if(si) si.value = "";
-      if(di) di.value = "";
-      state.filtered = state.items.filter(x =>
-        String(x.date || "").indexOf(b.dataset.month) === 0 &&
-        (!state.uploaderWho || x.uploadedBy === state.uploaderWho)
-      );
-      state.page = 1;
-      renderGallery();
-    });
+  const groups=[...new Set(state.items.map(x=>(x.date||"").slice(0,7)).filter(Boolean))];
+  $("#timelineNav").innerHTML=groups.map(m=>`<button type="button" data-month="${m}">${new Intl.DateTimeFormat("pt-BR",{month:"long",year:"numeric"}).format(new Date(m+"-01T12:00:00"))}</button>`).join("");
+  $("#timelineNav").querySelectorAll("button").forEach(b=>b.onclick=()=>{
+    $("#searchInput").value="";$("#dateInput").value="";
+    state.filtered=state.items.filter(x=>(x.date||"").startsWith(b.dataset.month)&&(!state.uploaderWho||x.uploadedBy===state.uploaderWho)&&(!state.catFilter||(x.categories||[]).includes(state.catFilter)));
+    state.page=1;renderGallery();
   });
 }
-
-/* ---------- card ---------- */
-async function loadCardMedia(card){
-  if(!card) return;
-  if(card.dataset.loaded === "1" || card.dataset.loading === "1") return;
-
-  const idx = +card.dataset.idx;
-  const item = state.filtered[idx];
-  if(!item) return;
-
-  card.dataset.loading = "1";
-  const wrap = card.querySelector(".media-wrap");
-  if(!wrap) return;
-
+const mediaObserver=new IntersectionObserver((entries)=>{
+  entries.forEach(entry=>{if(!entry.isIntersecting)return;mediaObserver.unobserve(entry.target);fillCardMedia(entry.target)});
+},{rootMargin:"250px"});
+async function fillCardMedia(card){
+  const item=state.filtered[+card.dataset.idx];
+  if(!item)return;
   try{
-    const url = await getImageUrl(item);
-    if(!card.isConnected || !wrap.isConnected) return;
-
-    const isVideo = String(item.type || "").indexOf("video") === 0;
-
-    if(isVideo){
-      const v = document.createElement("video");
-      v.src = url;
-      v.muted = true;
-      v.preload = "metadata";
-      v.setAttribute("playsinline", "");
-      wrap.innerHTML = "";
-      wrap.appendChild(v);
-    } else {
-      // >>> desenha em canvas, não em <img> <<<
-      const canvas = await buildThumbCanvas(url);
-      if(!card.isConnected || !wrap.isConnected) return;
-      wrap.innerHTML = "";
-      wrap.appendChild(canvas);
-    }
-    card.dataset.loaded = "1";
-    card.dataset.loading = "";
-  }catch(e){
-    console.warn("[album] falha card", idx, item.name, e);
-    card.dataset.loading = "";
-    card.dataset.failed = "1";
-    if(wrap.isConnected) wrap.textContent = "Erro — toque para tentar";
-  }
+    const url=await getDecryptedUrl(item);
+    const isVideo=item.type.startsWith("video");
+    card.querySelector(".media-wrap").innerHTML=isVideo?`<video src="${url}" muted preload="metadata" playsinline></video>`:`<img src="${url}" alt="">`;
+  }catch(e){card.querySelector(".media-wrap").textContent="Erro"}
 }
-
 function renderGallery(){
-  const gallery = document.getElementById("gallery");
-  if(!gallery) return;
-  const shown = state.filtered.slice(0, state.page * state.pageSize);
-  gallery.innerHTML = "";
-  const emptyEl = document.getElementById("empty");
-  const moreEl = document.getElementById("loadMore");
-  if(!shown.length){
-    if(emptyEl) emptyEl.classList.remove("hidden");
-    if(moreEl) moreEl.classList.add("hidden");
-    return;
-  }
-  if(emptyEl) emptyEl.classList.add("hidden");
-
-  let lastDate = "";
-  shown.forEach((x, i) => {
-    if(x.date !== lastDate){
-      const d = document.createElement("div");
-      d.className = "day";
-      const count = state.filtered.filter(y => y.date === x.date).length;
-      d.innerHTML = "<h3>" + niceDate(x.date) + "</h3><small>" + count + " item(ns)</small>";
-      gallery.appendChild(d);
-      lastDate = x.date;
-    }
-    const card = document.createElement("article");
-    card.className = "card";
-    card.dataset.idx = i;
-    const isVideo = String(x.type || "").indexOf("video") === 0;
-    card.innerHTML =
-      '<div class="media-wrap"></div>' +
-      '<span class="type">' + (isVideo ? "▶ Vídeo" : "▣ Foto") + '</span>' +
-      '<span class="uploader-tag">' + escapeHtml(x.uploadedBy || "?") + '</span>' +
-      '<div class="name" title="' + escapeHtml(x.name) + '">' + escapeHtml(x.name) + '</div>';
-    card.addEventListener("click", () => {
-      if(card.dataset.failed === "1"){
-        delete card.dataset.failed;
-        delete card.dataset.loaded;
-        delete card.dataset.loading;
-        const w = card.querySelector(".media-wrap");
-        if(w) w.innerHTML = "";
-        loadCardMedia(card);
-        return;
-      }
-      openViewer(i, state.filtered);
-    });
-    gallery.appendChild(card);
+  const shown=state.filtered.slice(0,state.page*state.pageSize);
+  $("#gallery").innerHTML="";
+  if(!shown.length){$("#empty").classList.remove("hidden");$("#loadMore").classList.add("hidden");return}
+  $("#empty").classList.add("hidden");
+  let last="";
+  shown.forEach((x)=>{
+    if(x.date!==last){const d=document.createElement("div");d.className="day";d.innerHTML=`<h3>${niceDate(x.date)}</h3><small>${state.filtered.filter(y=>y.date===x.date).length} item(ns)</small>`;$("#gallery").appendChild(d);last=x.date}
+    const idx=state.filtered.indexOf(x);
+    const card=document.createElement("article");card.className="card"+(state.selected.has(x.path)?" selected":"");
+    card.dataset.idx=idx;
+    card.innerHTML=`<div class="media-wrap">Carregando…</div><span class="type">${x.type.startsWith("video")?"▶":"▣"}</span><span class="uploader-tag">${escapeHtml(x.uploadedBy||"?")}</span>${x.caption?'<span class="cap-dot">✎</span>':""}${state.selectMode?'<span class="select-check">'+(state.selected.has(x.path)?"✓":"")+'</span>':""}`;
+    card.onclick=()=>{
+      if(state.selectMode){toggleSelect(x.path);return}
+      openViewer(idx,state.filtered);
+    };
+    $("#gallery").appendChild(card);
+    mediaObserver.observe(card);
   });
-
-  if(moreEl) moreEl.classList.toggle("hidden", shown.length >= state.filtered.length);
-
-  const cards = gallery.querySelectorAll(".card");
-  for(let i = 0; i < cards.length; i++){
-    loadCardMedia(cards[i]);
-  }
+  $("#loadMore").classList.toggle("hidden",shown.length>=state.filtered.length);
+}
+function toggleSelect(path){
+  if(state.selected.has(path))state.selected.delete(path);else state.selected.add(path);
+  renderGallery();updateSelectionBar();
+}
+function updateSelectionBar(){
+  const n=state.selected.size;
+  $("#selectionBar").classList.toggle("hidden",!state.selectMode||n===0);
+  $("#selectionCount").textContent=`${n} selecionado(s)`;
 }
 
 /* ---------- viewer ---------- */
-async function openViewer(i, list){
-  if(!list || !list.length) return;
-  state.viewerList = list.slice();
-  state.current = i;
-  const v = document.getElementById("viewer");
-  if(v) v.classList.remove("hidden");
-  await showViewer();
-}
-
+async function openViewer(i,list){state.viewerList=list;state.current=i;$("#viewer").classList.remove("hidden");await showViewer()}
 async function showViewer(){
-  const content = document.getElementById("viewerContent");
-  const cap = document.getElementById("viewerCaption");
-  const x = state.viewerList[state.current];
-  if(!x){ closeViewer(); return; }
-  if(content) content.innerHTML = "Carregando…";
+  const x=state.viewerList[state.current];
+  $("#viewerContent").innerHTML="Carregando…";
   try{
-    const url = await getImageUrl(x);
-    if(!content) return;
-    if(String(x.type || "").indexOf("video") === 0){
-      content.innerHTML = '<video src="' + url + '" controls autoplay playsinline></video>';
-    } else {
-      const img = await loadImageElement(url);
-      content.innerHTML = "";
-      content.appendChild(img);
-    }
-  }catch(e){
-    if(content) content.innerHTML = "Erro ao carregar o arquivo.";
-  }
-  if(cap) cap.textContent = x.name + " • " + niceDate(x.date) + " • enviado por " + (x.uploadedBy || "?");
+    const url=await getDecryptedUrl(x);
+    $("#viewerContent").innerHTML=x.type.startsWith("video")?`<video src="${url}" controls autoplay playsinline></video>`:`<img src="${url}" alt="">`;
+  }catch(e){$("#viewerContent").innerHTML="Erro ao carregar o arquivo."}
+  $("#viewerCaption").textContent=x.caption?x.caption:`${x.name} • ${niceDate(x.date)} • enviado por ${x.uploadedBy||"?"}`;
+  $("#viewerTags").innerHTML=(x.categories||[]).map(c=>`<span class="tag-chip">${escapeHtml(c)}</span>`).join("");
 }
+function move(n){state.current=(state.current+n+state.viewerList.length)%state.viewerList.length;showViewer()}
+function curItem(){return state.viewerList?state.viewerList[state.current]:null}
 
-function closeViewer(){
-  const v = document.getElementById("viewer");
-  const c = document.getElementById("viewerContent");
-  if(v) v.classList.add("hidden");
-  if(c) c.innerHTML = "";
-  state.viewerList = [];
-  state.current = 0;
-}
-
-function move(n){
-  if(!state.viewerList.length) return;
-  state.current = (state.current + n + state.viewerList.length) % state.viewerList.length;
-  showViewer();
-}
-
+/* ---------- download / delete ---------- */
 async function downloadItem(item){
-  if(!item) return;
-  try{
-    const url = await getImageUrl(item);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = item.name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }catch(e){ toast("Falha ao baixar: " + e.message); }
+  try{const url=await getDecryptedUrl(item);const a=document.createElement("a");a.href=url;a.download=item.name;document.body.appendChild(a);a.click();a.remove()}
+  catch(e){toast("Falha ao baixar: "+e.message)}
 }
-
-/* ---------- fila de mutações ---------- */
-let mutex = Promise.resolve();
-function serialize(fn){
-  const next = mutex.then(fn, fn);
-  mutex = next.catch(() => {});
-  return next;
-}
-
-/* ---------- excluir ---------- */
-function deleteItem(item){
-  if(!item) return Promise.resolve();
-  if(!confirm('Excluir "' + item.name + '" para sempre?')) return Promise.resolve();
-  return serialize(async () => {
-    const c = cfg();
-    const apiPath = String(item.path).split("/").map(enc).join("/");
-    try{
-      let sha = item.sha || null;
-      const r = await api(contentsPath(apiPath) + "?ref=" + enc(c.branch));
-      if(r.ok) sha = (await r.json()).sha;
-      else if(r.status !== 404) throw Error("Não foi possível obter o arquivo.");
-
-      if(sha){
-        const res = await api(contentsPath(apiPath), {
-          method: "DELETE",
-          body: JSON.stringify({message: "album: remover " + item.name, sha, branch: c.branch})
-        });
-        if(!res.ok && res.status !== 404){
-          const err = await res.json().catch(() => ({}));
-          throw Error(err.message || ("Falha ao excluir (HTTP " + res.status + ")."));
-        }
-      }
-
-      const nextItems = state.items.filter(x => x.path !== item.path);
-      await putJson(nextItems);
-      state.items = nextItems;
-
-      revokeImage(item.path);
-      closeViewer();
-      toast("Excluído.");
-      render();
-    }catch(e){
-      console.error("[album] delete:", e);
-      toast(e.message || "Erro ao excluir.");
-    }
-  });
-}
-
-/* ---------- putJson ---------- */
-async function putJson(items){
-  const c = cfg();
-  const content = JSON.stringify(items, null, 2);
-  const encoded = b64(new TextEncoder().encode(content));
-  let lastErr = null;
-  for(let attempt = 0; attempt < 3; attempt++){
-    let sha = null;
-    try{
-      const r = await api(contentsPath("gallery.json") + "?ref=" + enc(c.branch));
-      if(r.ok) sha = (await r.json()).sha;
-    }catch{}
-    const body = {message: "album: atualizar catálogo", content: encoded, branch: c.branch};
-    if(sha) body.sha = sha;
-    const res = await api(contentsPath("gallery.json"), {method: "PUT", body: JSON.stringify(body)});
-    if(res.ok){
-      state.gallerySha = (await res.json()).content.sha;
-      return;
-    }
-    const err = await res.json().catch(() => ({}));
-    lastErr = err;
-    if(res.status === 409 && attempt < 2){
-      await new Promise(rs => setTimeout(rs, 300 * (attempt + 1)));
-      continue;
-    }
-    throw Error(err.message || "Falha ao salvar catálogo.");
+async function deleteFile(item){
+  const c=cfg();
+  let sha=item.sha;
+  try{if(!sha)sha=await getFileSha(item)}catch{sha=null}
+  if(sha){
+    const res=await api(`/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/${item.path.split("/").map(encodeURIComponent).join("/")}`,{method:"DELETE",body:JSON.stringify({message:`album: remover ${item.name}`,sha,branch:c.branch})});
+    if(!res.ok&&res.status!==404){throw Error((await res.json().catch(()=>({}))).message||"Falha ao excluir arquivo.")}
   }
-  throw Error((lastErr && lastErr.message) || "Falha ao salvar catálogo.");
+  state.items=state.items.filter(x=>x.path!==item.path);
+  if(blobUrlCache.has(item.path)){URL.revokeObjectURL(blobUrlCache.get(item.path));blobUrlCache.delete(item.path)}
+}
+async function deleteItem(item){
+  if(!confirm(`Excluir "${item.name}" para sempre?`))return;
+  try{
+    await deleteFile(item);
+    await putGallery();
+    logEvent("delete",currentUser(),item.name);
+    $("#viewer").classList.add("hidden");$("#viewerContent").innerHTML="";
+    toast("Excluído.");render();
+  }catch(e){toast(e.message)}
+}
+async function bulkDelete(){
+  if(!confirm(`Excluir ${state.selected.size} item(ns) para sempre?`))return;
+  const paths=[...state.selected];
+  toast(`Excluindo 0/${paths.length}...`);
+  let ok=0;
+  for(let i=0;i<paths.length;i++){
+    const item=state.items.find(x=>x.path===paths[i]);
+    if(!item)continue;
+    try{await deleteFile(item);ok++;toast(`Excluindo ${i+1}/${paths.length}...`)}catch{}
+  }
+  await putGallery();
+  logEvent("delete",currentUser(),`${ok} item(ns) em lote`);
+  state.selected.clear();exitSelectMode();
+  toast(`${ok} excluído(s).`);render();
+}
+
+/* ---------- legenda ---------- */
+function openCaptionModal(item){
+  state.captionTarget=item;
+  $("#captionInput").value=item.caption||"";
+  $("#captionModal").classList.remove("hidden");
+}
+async function saveCaption(){
+  const item=state.captionTarget;if(!item)return;
+  item.caption=$("#captionInput").value.trim();
+  try{await putGallery();logEvent("caption",currentUser(),item.name);$("#captionModal").classList.add("hidden");toast("Legenda salva.");if(!$("#viewer").classList.contains("hidden"))showViewer();renderGallery()}
+  catch(e){toast(e.message)}
+}
+
+/* ---------- categorias ---------- */
+function openCategoryModal(mode,target){
+  state.categoryModalMode=mode;state.categoryModalTarget=target;
+  $("#categoryModalTitle").textContent=mode==="upload"?"Categorizar envio":(mode==="bulk"?`Categorizar ${state.selected.size} item(ns)`:"Categorias");
+  renderCategoryChips();
+  $("#categoryModal").classList.remove("hidden");
+}
+function renderCategoryChips(){
+  const current=state.categoryModalMode==="single"?(state.categoryModalTarget.categories||[]):[];
+  $("#categoryChips").innerHTML=state.categories.map(cat=>`<button type="button" class="chip${current.includes(cat)?" on":""}" data-cat="${escapeHtml(cat)}">${escapeHtml(cat)}</button>`).join("")||'<span class="muted-sm">Nenhuma categoria ainda. Crie uma abaixo.</span>';
+  $("#categoryChips").querySelectorAll(".chip").forEach(ch=>ch.onclick=()=>ch.classList.toggle("on"));
+}
+async function addNewCategory(){
+  const name=$("#newCategoryInput").value.trim();
+  if(!name)return;
+  if(!state.categories.includes(name)){state.categories.push(name);try{await putCategories()}catch(e){toast(e.message);return}fillCategorySelect()}
+  $("#newCategoryInput").value="";
+  renderCategoryChips();
+  const chip=[...$("#categoryChips").querySelectorAll(".chip")].find(c=>c.dataset.cat===name);
+  if(chip)chip.classList.add("on");
+}
+async function applyCategoryModal(){
+  const chosen=[...$("#categoryChips").querySelectorAll(".chip.on")].map(c=>c.dataset.cat);
+  if(state.categoryModalMode==="upload"){
+    $("#categoryModal").classList.add("hidden");
+    await doUpload(state.pendingFiles,chosen);
+    return;
+  }
+  try{
+    if(state.categoryModalMode==="bulk"){
+      state.items.forEach(x=>{if(state.selected.has(x.path))x.categories=chosen});
+      await putGallery();
+      logEvent("category",currentUser(),`${state.selected.size} item(ns) → ${chosen.join(", ")||"(nenhuma)"}`);
+      state.selected.clear();exitSelectMode();
+    }else{
+      state.categoryModalTarget.categories=chosen;
+      await putGallery();
+      logEvent("category",currentUser(),`${state.categoryModalTarget.name} → ${chosen.join(", ")||"(nenhuma)"}`);
+      if(!$("#viewer").classList.contains("hidden"))showViewer();
+    }
+    $("#categoryModal").classList.add("hidden");
+    toast("Categorias atualizadas.");render();
+  }catch(e){toast(e.message)}
+}
+
+/* ---------- compartilhar ---------- */
+function shareUrl(id){return location.origin+location.pathname+"?s="+id}
+function openShareModal(item){
+  state.shareTarget=item;
+  $("#shareModal").classList.remove("hidden");
+  renderShareLinks();
+}
+async function renderShareLinks(){
+  $("#shareLinksList").innerHTML="Carregando…";
+  try{
+    const {data}=await readJsonFile("shares.json");
+    const list=(data||[]).filter(s=>s.path===state.shareTarget.path&&s.expiresAt>Date.now());
+    $("#shareLinksList").innerHTML=list.length?list.map(s=>`<div class="share-link-row"><code>${shareUrl(s.id)}</code><button type="button" data-copy="${shareUrl(s.id)}">Copiar</button><button type="button" data-revoke="${s.id}">Revogar</button></div>`).join(""):'<p class="muted-sm">Nenhum link ativo.</p>';
+    $("#shareLinksList").querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>{navigator.clipboard?.writeText(b.dataset.copy);toast("Link copiado.")});
+    $("#shareLinksList").querySelectorAll("[data-revoke]").forEach(b=>b.onclick=()=>revokeShare(b.dataset.revoke));
+  }catch(e){$("#shareLinksList").innerHTML=`<p class="muted-sm">${escapeHtml(e.message)}</p>`}
+}
+async function createShare(){
+  const item=state.shareTarget;if(!item)return;
+  try{
+    const sha=await getFileSha(item);
+    const {data,sha:fsha}=await readJsonFile("shares.json");
+    const list=data||[];
+    const id=(crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random()).replace(/-/g,"").slice(0,16);
+    const dur=+$("#shareDuration").value;
+    list.push({id,path:item.path,sha,iv:item.iv,type:item.type,name:item.name,caption:item.caption||"",createdBy:currentUser(),createdAt:Date.now(),expiresAt:Date.now()+dur});
+    await writeJsonFile("shares.json",list,fsha,"album: novo link de compartilhamento");
+    logEvent("share_create",currentUser(),item.name);
+    toast("Link gerado.");
+    renderShareLinks();
+  }catch(e){toast(e.message)}
+}
+async function revokeShare(id){
+  try{
+    const {data,sha}=await readJsonFile("shares.json");
+    const list=(data||[]).filter(s=>s.id!==id);
+    await writeJsonFile("shares.json",list,sha,"album: revogar link");
+    logEvent("share_revoke",currentUser(),id);
+    toast("Link revogado.");renderShareLinks();
+  }catch(e){toast(e.message)}
+}
+
+/* ---------- informações ---------- */
+function openInfoModal(item){
+  const rows=[
+    ["Nome",item.name],["Enviado por",item.uploadedBy||"?"],["Enviado em",niceDateTime(item.uploadedAt)],
+    ["Data da foto",item.takenAt?niceDate(item.takenAt):(item.date?niceDate(item.date):"—")],
+    ["Tamanho",fmtBytes(item.bytes)],["Categorias",(item.categories||[]).join(", ")||"—"],
+  ];
+  if(item.lat&&item.lon)rows.push(["Local",`<a href="https://maps.google.com/?q=${item.lat},${item.lon}" target="_blank" rel="noopener">ver no mapa</a>`]);
+  $("#infoBody").innerHTML=rows.map(([k,v])=>`<div><span>${k}</span><span>${v}</span></div>`).join("");
+  $("#infoModal").classList.remove("hidden");
 }
 
 /* ---------- config ---------- */
 async function readConfigFile(){
   try{
-    const r = await fetch("config.json?t=" + Date.now(), {cache: "no-store"});
-    if(!r.ok) return null;
-    const c = await r.json();
-    if(!c.owner || !c.repo || !c.tokenEnc) return null;
-    const token = await decryptText(c.tokenEnc.data, c.tokenEnc.iv);
-    if(!token || token.indexOf("cole_aqui") === 0) return null;
-    return {owner: c.owner, repo: c.repo, branch: c.branch || "main", token: token};
-  }catch{ return null; }
+    const r=await fetch("config.json?t="+Date.now(),{cache:"no-store"});
+    if(!r.ok)return null;
+    const c=await r.json();
+    if(!c.owner||!c.repo||!c.tokenEnc)return null;
+    const token=await decryptText(c.tokenEnc.data,c.tokenEnc.iv);
+    if(!token||token.startsWith("cole_aqui"))return null;
+    return{owner:c.owner,repo:c.repo,branch:c.branch||"main",token};
+  }catch{return null}
 }
-
 async function writeConfigFile(c){
-  const tokenEnc = await encryptText(c.token);
-  const content = b64(new TextEncoder().encode(JSON.stringify({owner: c.owner, repo: c.repo, branch: c.branch, tokenEnc: tokenEnc}, null, 2)));
+  const tokenEnc=await encryptText(c.token);
+  const content=b64(new TextEncoder().encode(JSON.stringify({owner:c.owner,repo:c.repo,branch:c.branch,tokenEnc},null,2)));
   let sha;
-  try{
-    const r = await api(contentsPath("config.json") + "?ref=" + enc(c.branch));
-    if(r.ok) sha = (await r.json()).sha;
-  }catch{}
-  const body = {message: "album: salvar configuração", content: content, branch: c.branch};
-  if(sha) body.sha = sha;
-  const res = await api(contentsPath("config.json"), {method: "PUT", body: JSON.stringify(body)});
-  if(!res.ok) throw Error((await res.json().catch(() => ({}))).message || "Falha ao salvar configuração.");
+  try{const r=await api(`/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/config.json?ref=${encodeURIComponent(c.branch)}`);if(r.ok)sha=(await r.json()).sha}catch{}
+  const body={message:"album: salvar configuração",content,branch:c.branch};
+  if(sha)body.sha=sha;
+  const res=await api(`/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/config.json`,{method:"PUT",body:JSON.stringify(body)});
+  if(!res.ok)throw Error((await res.json()).message||"Falha ao salvar configuração no repositório.");
 }
-
 async function readConfig(){
-  const fromFile = await readConfigFile();
-  if(fromFile){ state.config = fromFile; await loadGallery(); return; }
-  try{
-    const local = JSON.parse(localStorage.getItem("albumConfig") || "null");
-    if(local){ state.config = local; await loadGallery(); return; }
-  }catch{}
-  const s = document.getElementById("settings");
-  if(s) s.classList.remove("hidden");
-}
-
-/* ---------- progresso ---------- */
-function showProgress(frac, label){
-  const el = document.getElementById("uploadProgress");
-  if(!el) return;
-  el.classList.remove("hidden");
-  const pct = Math.round(Math.max(0, Math.min(1, frac)) * 100);
-  const bar = document.getElementById("uploadProgressBar");
-  const lbl = document.getElementById("uploadProgressLabel");
-  if(bar) bar.style.width = pct + "%";
-  if(lbl) lbl.textContent = label || (pct + "%");
-}
-function hideProgress(){
-  const el = document.getElementById("uploadProgress");
-  if(el) el.classList.add("hidden");
+  const fromFile=await readConfigFile();
+  if(fromFile){state.config=fromFile;await loadGallery();return}
+  try{const local=JSON.parse(localStorage.getItem("albumConfig")||"null");if(local){state.config=local;await loadGallery();return}}catch{}
+  $("#settings").classList.remove("hidden");
 }
 
 /* ---------- upload ---------- */
-function sanitizeName(name){
-  return String(name || "")
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\w.\- ]+/g, "").trim().replace(/\s+/g, "-")
-    || ("arquivo-" + Date.now());
+async function uploadOneFile(file,categories){
+  const c=cfg(),now=new Date(),date=$("#dateInput").value||now.toISOString().slice(0,10);
+  if(file.size>100*1024*1024)throw Error(`${file.name}: acima de 100 MB. GitHub bloqueia arquivos maiores no Git normal.`);
+  const clean=file.name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^\w.\- ]+/g,"").trim().replace(/\s+/g,"-")||`arquivo-${Date.now()}`;
+  const path=`media/${date.slice(0,4)}/${date.slice(5,7)}/${date}/${Date.now()}-${clean}.enc`;
+  const raw=await file.arrayBuffer();
+  let exif=null;
+  if(file.type==="image/jpeg")exif=parseExif(raw);
+  const {cipher,iv}=await encryptBuffer(raw);
+  const encoded=b64(cipher);
+  const res=await api(`/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/${path.split("/").map(encodeURIComponent).join("/")}`,{method:"PUT",body:JSON.stringify({message:`album: adicionar ${clean}`,content:encoded,branch:c.branch})});
+  if(!res.ok)throw Error(`${file.name}: ${(await res.json()).message||"falha no upload"}`);
+  const resJson=await res.json();
+  state.items.push({name:file.name,path,date:(exif&&exif.takenAt)||date,takenAt:exif&&exif.takenAt||null,
+    lat:exif&&exif.lat||null,lon:exif&&exif.lon||null,type:file.type,bytes:file.size,iv,sha:resJson.content.sha,
+    uploadedAt:new Date().toISOString(),uploadedBy:currentUser(),categories:categories||[],caption:""});
+  state.items.sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.uploadedAt||"").localeCompare(a.uploadedAt||""));
 }
-
-async function uploadFile(file, onProgress){
-  const c = cfg();
-  const now = new Date();
-  const di = document.getElementById("dateInput");
-  const date = (di && di.value) || now.toISOString().slice(0, 10);
-  if(file.size > 100 * 1024 * 1024) throw Error(file.name + ": acima de 100 MB.");
-  const clean = sanitizeName(file.name);
-  const path = "media/" + date.slice(0, 4) + "/" + date.slice(5, 7) + "/" + date + "/" + Date.now() + "-" + clean + ".enc";
-  const raw = await file.arrayBuffer();
-  const encd = await encryptBuffer(raw);
-  const encoded = b64(encd.cipher);
-  const bodyStr = JSON.stringify({
-    message: "album: adicionar " + clean,
-    content: encoded,
-    branch: c.branch
-  });
-  const res = await apiUpload(contentsPath(String(path).split("/").map(enc).join("/")), bodyStr, onProgress);
-  if(!res.ok) throw Error(file.name + ": " + ((res.data && res.data.message) || "falha no upload"));
-  state.items.push({
-    name: file.name,
-    path: path,
-    date: date,
-    type: file.type,
-    bytes: file.size,
-    iv: encd.iv,
-    sha: res.data.content.sha,
-    uploadedAt: new Date().toISOString(),
-    uploadedBy: currentUser()
-  });
-  state.items.sort((a, b) =>
-    String(b.date || "").localeCompare(String(a.date || "")) ||
-    String(b.uploadedAt || "").localeCompare(String(a.uploadedAt || ""))
-  );
-}
-
-function uploadFiles(files){
-  if(!requireLogin()) return Promise.resolve();
-  if(!cfg()){
-    toast("Configure o GitHub primeiro.");
-    const s = document.getElementById("settings");
-    if(s) s.classList.remove("hidden");
-    return Promise.resolve();
-  }
-  const arr = Array.prototype.slice.call(files || []).filter(f => f && f.size > 0);
-  if(!arr.length) return Promise.resolve();
-
-  return serialize(async () => {
-    const totalBytes = arr.reduce((s, f) => s + f.size, 0);
-    let bytesDone = 0;
-    const btn = document.getElementById("uploadBtn");
-    const fi = document.getElementById("fileInput");
-    if(btn) btn.disabled = true;
-    showProgress(0, "Preparando...");
-    try{
-      for(let i = 0; i < arr.length; i++){
-        const file = arr[i];
-        showProgress(bytesDone / totalBytes, "Preparando " + (i + 1) + "/" + arr.length + "...");
-        await uploadFile(file, frac => {
-          const done = bytesDone + file.size * frac;
-          const pct = Math.round((done / totalBytes) * 100);
-          showProgress(done / totalBytes, "Enviando " + (i + 1) + "/" + arr.length + " — " + pct + "%");
-        });
-        bytesDone += file.size;
-        const pct2 = Math.round((bytesDone / totalBytes) * 100);
-        showProgress(bytesDone / totalBytes, "Enviando " + (i + 1) + "/" + arr.length + " — " + pct2 + "%");
-      }
-      showProgress(1, "Salvando catálogo...");
-      await putJson(state.items);
-      showProgress(1, "Concluído!");
-      toast("Upload concluído.");
-      state.page = 1;
-      render();
-      setTimeout(hideProgress, 1200);
-    }catch(e){
-      toast(e.message);
-      hideProgress();
-    }finally{
-      if(btn) btn.disabled = false;
-      if(fi) fi.value = "";
-    }
-  });
-}
-
-/* =========================================================
-   LISTENERS + INIT
-   ========================================================= */
-ready(() => {
-  console.log("[album] DOM pronto, listeners v" + VERSION);
-
-  on("#loginBtn", "click", () => {
-    const p = document.getElementById("loginPassword");
-    if(p && doLogin(p.value)) readConfig();
-  });
-
-  on("#loginPassword", "keydown", e => {
-    if(e.key === "Enter"){
-      const p = document.getElementById("loginPassword");
-      if(p && doLogin(p.value)) readConfig();
-    }
-  });
-
-  on("#logoutBtn", "click", e => {
-    e.stopPropagation();
-    const d = document.getElementById("menuDropdown");
-    if(d) d.classList.add("hidden");
-    try{ sessionStorage.removeItem("albumUser"); }catch{}
-    state.user = null;
-    document.body.classList.remove("logged-in");
-    location.reload();
-  });
-
-  on("#menuBtn", "click", e => {
-    e.stopPropagation();
-    const d = document.getElementById("menuDropdown");
-    if(d) d.classList.toggle("hidden");
-  });
-
-  document.addEventListener("click", e => {
-    if(e.target && e.target.closest && !e.target.closest(".menu-wrap")){
-      const d = document.getElementById("menuDropdown");
-      if(d) d.classList.add("hidden");
-    }
-  });
-
-  on("#settingsBtn", "click", e => {
-    e.stopPropagation();
-    const d = document.getElementById("menuDropdown");
-    if(d) d.classList.add("hidden");
-    const s = document.getElementById("settings");
-    if(s) s.classList.remove("hidden");
-  });
-
-  on("#settingsClose", "click", () => {
-    const s = document.getElementById("settings");
-    if(s) s.classList.add("hidden");
-  });
-
-  on("#saveSettings", "click", async () => {
-    const t = document.getElementById("token");
-    const token = t ? t.value.trim() : "";
-    if(!token){ toast("Cole o token."); return; }
-    const c = {owner: DEFAULT_OWNER, repo: DEFAULT_REPO, branch: DEFAULT_BRANCH, token: token};
-    state.config = c;
-    try{
-      await writeConfigFile(c);
-      saveCfg(c);
-      const s = document.getElementById("settings");
-      if(s) s.classList.add("hidden");
-      toast("Configuração salva.");
-      await loadGallery();
-    }catch(e){ toast(e.message); }
-  });
-
-  on("#uploadBtn", "click", () => {
-    if(!requireLogin()) return;
-    const fi = document.getElementById("fileInput");
-    if(fi) fi.click();
-  });
-
-  on("#fileInput", "change", e => { uploadFiles(e.target.files); });
-
-  on("#searchInput", "input", apply);
-  on("#dateInput", "change", apply);
-
-  on("#clearBtn", "click", () => {
-    const si = document.getElementById("searchInput");
-    const di = document.getElementById("dateInput");
-    if(si) si.value = "";
-    if(di) di.value = "";
-    apply();
-  });
-
-  on("#todayBtn", "click", () => {
-    const di = document.getElementById("dateInput");
-    if(di) di.value = new Date().toISOString().slice(0, 10);
-    apply();
-  });
-
-  on("#loadMore", "click", () => { state.page++; renderGallery(); });
-
-  on("#viewerClose", "click", closeViewer);
-  on("#viewerDownload", "click", () => downloadItem(state.viewerList[state.current]));
-  on("#viewerDelete", "click", () => deleteItem(state.viewerList[state.current]));
-  on("#prevBtn", "click", () => move(-1));
-  on("#nextBtn", "click", () => move(1));
-
-  const uf = document.getElementById("uploaderFilter");
-  if(uf){
-    uf.querySelectorAll(".filter-btn").forEach(b => {
-      b.addEventListener("click", () => {
-        uf.querySelectorAll(".filter-btn").forEach(x => x.classList.remove("active"));
-        b.classList.add("active");
-        state.uploaderWho = b.dataset.who || "";
-        apply();
-      });
-    });
-  }
-
-  document.addEventListener("keydown", e => {
-    if(e.key === "Escape"){
-      closeViewer();
-      const s = document.getElementById("settings");
-      if(s) s.classList.add("hidden");
-    }
-    const v = document.getElementById("viewer");
-    if(v && !v.classList.contains("hidden")){
-      if(e.key === "ArrowLeft") move(-1);
-      if(e.key === "ArrowRight") move(1);
-    }
-  });
-
-  console.log("[album] listeners ok, versão", VERSION);
-
+async function doUpload(files,categories){
+  const arr=[...files];if(!arr.length)return;
+  $("#uploadProgress").classList.remove("hidden");
   try{
-    if(!requireLogin()){
-      console.log("[album] aguardando login");
-    } else {
-      readConfig();
+    for(let i=0;i<arr.length;i++){
+      const pct=Math.round((i/arr.length)*100);
+      $("#uploadProgressBar").style.width=pct+"%";
+      $("#uploadProgressLabel").textContent=`Enviando ${i+1}/${arr.length}: ${arr[i].name}`;
+      await uploadOneFile(arr[i],categories);
     }
-  }catch(e){
-    console.error("[album] erro no init:", e);
-    toast("Erro ao iniciar: " + e.message);
-  }
-});
+    $("#uploadProgressBar").style.width="100%";
+    await putGallery();
+    logEvent("upload",currentUser(),`${arr.length} arquivo(s)${categories&&categories.length?" em "+categories.join(", "):""}`);
+    toast("Upload concluído.");
+    render();
+  }catch(e){toast(e.message)}
+  finally{$("#uploadProgress").classList.add("hidden");$("#uploadProgressBar").style.width="0%";$("#fileInput").value="";state.pendingFiles=null}
+}
+function uploadFiles(files){
+  if(!requireLogin())return;
+  if(!cfg()){toast("Configure o GitHub primeiro.");$("#settings").classList.remove("hidden");return}
+  const arr=[...files];if(!arr.length)return;
+  state.pendingFiles=arr;
+  openCategoryModal("upload",null);
+}
 
-})();
+/* ---------- modo seleção ---------- */
+function enterSelectMode(){state.selectMode=true;state.selected.clear();$("#selectModeBtn").classList.add("active");renderGallery();updateSelectionBar()}
+function exitSelectMode(){state.selectMode=false;state.selected.clear();$("#selectModeBtn").classList.remove("active");renderGallery();updateSelectionBar()}
+
+/* ---------- PWA ---------- */
+if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))}
+window.addEventListener("beforeinstallprompt",(e)=>{e.preventDefault();state.deferredInstall=e;$("#installBtn").classList.remove("hidden")});
+$("#installBtn").onclick=async()=>{if(!state.deferredInstall)return;state.deferredInstall.prompt();await state.deferredInstall.userChoice;state.deferredInstall=null;$("#installBtn").classList.add("hidden")};
+
+/* ---------- link público de compartilhamento (?s=id) ---------- */
+async function tryShareView(){
+  const id=new URLSearchParams(location.search).get("s");
+  if(!id)return false;
+  document.body.innerHTML="";
+  document.body.appendChild(Object.assign(document.createElement("div"),{className:"bg"}));
+  const modal=document.createElement("div");modal.className="modal";modal.id="shareView";
+  modal.innerHTML=`<div class="viewer-content" id="shareViewContent">Carregando…</div><div class="viewer-caption" id="shareViewCaption"></div>`;
+  document.body.appendChild(modal);
+  const toastEl=document.createElement("div");toastEl.className="toast";toastEl.id="toast";document.body.appendChild(toastEl);
+  try{
+    const listUrl=`https://api.github.com/repos/${DEFAULT_OWNER}/${DEFAULT_REPO}/contents/shares.json?ref=${DEFAULT_BRANCH}`;
+    const lr=await fetch(listUrl);
+    if(!lr.ok)throw Error("não foi possível carregar.");
+    const lx=await lr.json();
+    const list=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(lx.content.replace(/\n/g,"")),ch=>ch.charCodeAt(0))));
+    const entry=list.find(s=>s.id===id);
+    if(!entry||entry.expiresAt<Date.now()){$("#shareViewContent").textContent="Este link expirou ou não existe mais.";return true}
+    const br=await fetch(`https://api.github.com/repos/${DEFAULT_OWNER}/${DEFAULT_REPO}/git/blobs/${entry.sha}`);
+    if(!br.ok)throw Error("falha ao baixar.");
+    const blob=await br.json();
+    const cipherBuf=Uint8Array.from(atob(blob.content.replace(/\n/g,"")),ch=>ch.charCodeAt(0)).buffer;
+    const plainBuf=await decryptBuffer(cipherBuf,entry.iv);
+    const url=URL.createObjectURL(new Blob([plainBuf],{type:guessMime(entry.name,entry.type)}));
+    $("#shareViewContent").innerHTML=entry.type.startsWith("video")?`<video src="${url}" controls autoplay playsinline></video>`:`<img src="${url}" alt="">`;
+    $("#shareViewCaption").textContent=entry.caption||entry.name;
+  }catch(e){$("#shareViewContent").textContent="Não foi possível abrir este link."}
+  return true;
+}
+
+/* ---------- eventos ---------- */
+async function init(){
+  if(await tryShareView())return;
+
+  $("#loginBtn").onclick=()=>{if(doLogin($("#loginPassword").value))readConfig()};
+  $("#loginPassword").addEventListener("keydown",e=>{if(e.key==="Enter"&&doLogin($("#loginPassword").value))readConfig()});
+
+  $("#menuBtn").onclick=(e)=>{e.stopPropagation();$("#menuDropdown").classList.toggle("hidden")};
+  $("#settingsBtn").onclick=(e)=>{e.stopPropagation();$("#menuDropdown").classList.add("hidden");$("#settings").classList.remove("hidden")};
+  $("#settingsClose").onclick=()=>$("#settings").classList.add("hidden");
+  $("#logoutBtn").onclick=(e)=>{e.stopPropagation();$("#menuDropdown").classList.add("hidden");sessionStorage.removeItem("albumUser");state.user=null;location.reload()};
+  document.addEventListener("click",(e)=>{if(!e.target.closest(".menu-wrap")){$("#menuDropdown").classList.add("hidden");$("#viewerMenuDropdown")?.classList.add("hidden")}});
+
+  $("#saveSettings").onclick=async()=>{
+    const token=$("#token").value.trim();
+    if(!token)return toast("Cole o token.");
+    const c={owner:DEFAULT_OWNER,repo:DEFAULT_REPO,branch:DEFAULT_BRANCH,token};
+    state.config=c;
+    try{await writeConfigFile(c);saveCfg(c);$("#settings").classList.add("hidden");toast("Configuração salva. Não vai pedir de novo.");await loadGallery()}
+    catch(e){toast(e.message)}
+  };
+
+  $("#uploadBtn").onclick=()=>{if(!requireLogin())return;$("#fileInput").click()};
+  $("#fileInput").onchange=e=>uploadFiles(e.target.files);
+
+  $("#searchInput").oninput=apply;
+  $("#dateInput").onchange=apply;
+  $("#dateMode").onchange=()=>{state.dateMode=$("#dateMode").value;apply()};
+  $("#categorySelect").onchange=()=>{state.catFilter=$("#categorySelect").value;apply()};
+  $("#locOnlyChk").onchange=()=>{state.locOnly=$("#locOnlyChk").checked;apply()};
+  $("#clearBtn").onclick=()=>{$("#searchInput").value="";$("#dateInput").value="";$("#categorySelect").value="";$("#locOnlyChk").checked=false;state.catFilter="";state.locOnly=false;state.uploaderWho="";$("#uploaderFilter").querySelectorAll(".filter-btn").forEach((b,i)=>b.classList.toggle("active",i===0));apply()};
+  $("#todayBtn").onclick=()=>{$("#dateInput").value=new Date().toISOString().slice(0,10);apply()};
+  $("#filtersBtn").onclick=()=>$("#filtersPanel").classList.toggle("hidden");
+  $("#loadMore").onclick=()=>{state.page++;renderGallery()};
+  $("#uploaderFilter").querySelectorAll(".filter-btn").forEach(b=>b.onclick=()=>{
+    $("#uploaderFilter").querySelectorAll(".filter-btn").forEach(x=>x.classList.remove("active"));
+    b.classList.add("active");state.uploaderWho=b.dataset.who;apply();
+  });
+
+  $("#selectModeBtn").onclick=()=>{if(!requireLogin())return;state.selectMode?exitSelectMode():enterSelectMode()};
+  $("#selCancel").onclick=exitSelectMode;
+  $("#selDelete").onclick=bulkDelete;
+  $("#selCategorize").onclick=()=>openCategoryModal("bulk",null);
+
+  $("#viewerClose").onclick=()=>{$("#viewer").classList.add("hidden");$("#viewerContent").innerHTML=""};
+  $("#prevBtn").onclick=()=>move(-1);$("#nextBtn").onclick=()=>move(1);
+  $("#viewerMenuBtn").onclick=(e)=>{e.stopPropagation();$("#viewerMenuDropdown").classList.toggle("hidden")};
+  $("#viewerDownload").onclick=()=>{$("#viewerMenuDropdown").classList.add("hidden");downloadItem(curItem())};
+  $("#viewerDelete").onclick=()=>{$("#viewerMenuDropdown").classList.add("hidden");deleteItem(curItem())};
+  $("#viewerCaptionBtn").onclick=()=>{$("#viewerMenuDropdown").classList.add("hidden");openCaptionModal(curItem())};
+  $("#viewerCategoryBtn").onclick=()=>{$("#viewerMenuDropdown").classList.add("hidden");openCategoryModal("single",curItem())};
+  $("#viewerShareBtn").onclick=()=>{$("#viewerMenuDropdown").classList.add("hidden");openShareModal(curItem())};
+  $("#viewerInfoBtn").onclick=()=>{$("#viewerMenuDropdown").classList.add("hidden");openInfoModal(curItem())};
+
+  $("#captionClose").onclick=()=>$("#captionModal").classList.add("hidden");
+  $("#captionSave").onclick=saveCaption;
+
+  $("#categoryClose").onclick=()=>{$("#categoryModal").classList.add("hidden");if(state.categoryModalMode==="upload")doUpload(state.pendingFiles,[])};
+  $("#newCategoryAdd").onclick=addNewCategory;
+  $("#categorySave").onclick=applyCategoryModal;
+
+  $("#shareClose").onclick=()=>$("#shareModal").classList.add("hidden");
+  $("#shareCreate").onclick=createShare;
+
+  $("#infoClose").onclick=()=>$("#infoModal").classList.add("hidden");
+
+  document.querySelectorAll(".nav-item").forEach(btn=>btn.onclick=()=>{
+    document.querySelectorAll(".nav-item").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    const view=btn.dataset.view;
+    $("#mainView").classList.toggle("hidden",view!=="mainView");
+    $("#historyView").classList.toggle("hidden",view!=="historyView");
+    $("#uploadBtn").classList.toggle("hidden",view!=="mainView");
+    if(view==="historyView")loadHistory();
+  });
+
+  document.addEventListener("keydown",e=>{
+    if(e.key==="Escape"){$("#viewer").classList.add("hidden");$("#settings").classList.add("hidden")}
+    if(!$("#viewer").classList.contains("hidden")){if(e.key==="ArrowLeft")move(-1);if(e.key==="ArrowRight")move(1)}
+  });
+
+  if(requireLogin())await readConfig();
+}
+init();

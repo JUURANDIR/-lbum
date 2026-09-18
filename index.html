@@ -2,30 +2,31 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#09090b">
-  <title>Meu Álbum</title>
-  <link rel="stylesheet" href="style.css?v=14">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0f0810">
+  <title>Nosso Álbum</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="style.css?v=15">
 </head>
 <body>
   <div class="bg"></div>
 
   <div class="upload-progress hidden" id="uploadProgress">
-    <div class="upload-progress-inner">
-      <div class="upload-progress-bar" id="uploadProgressBar"></div>
-    </div>
+    <div class="upload-progress-inner"><div class="upload-progress-bar" id="uploadProgressBar"></div></div>
     <div class="upload-progress-label" id="uploadProgressLabel">0%</div>
   </div>
 
   <header class="topbar">
-    <div class="branding">
-      <div class="eyebrow">NOSSO ÁLBUM ❤</div>
-      <h1 id="albumTitle">Jurandir &amp; Mayanne</h1>
-      <p id="albumSubtitle">Nossos momentos, guardadinhos aqui.</p>
-    </div>
+    <div class="brand-mini"><span class="brand-heart">♥</span><b>Nosso Álbum</b></div>
     <div class="topbar-actions">
+      <button type="button" class="icon-btn hidden" id="installBtn" title="Instalar app">⤓</button>
+      <button type="button" class="icon-btn" id="selectModeBtn" title="Selecionar">☑</button>
       <div class="menu-wrap">
-        <button type="button" class="ghost menu-dots" id="menuBtn">⋯</button>
+        <button type="button" class="icon-btn" id="menuBtn">⋯</button>
         <div class="menu-dropdown hidden" id="menuDropdown">
           <span class="user-badge hidden" id="userBadge"></span>
           <button type="button" class="menu-item" id="settingsBtn">⚙ Configurar</button>
@@ -35,35 +36,44 @@
     </div>
   </header>
 
-  <main class="container">
-    <section class="hero">
-      <div class="hero-copy">
-        <span class="pill">♥ NOSSO CANTINHO</span>
-        <h2>Cada momento<br><span>guardado com carinho.</span></h2>
-        <p>Pesquise por data, navegue pela linha do tempo ou envie novas fotos e vídeos direto pra cá.</p>
-      </div>
-      <div class="hero-stat">
-        <strong id="totalCount">0</strong>
-        <span>itens</span>
-      </div>
+  <main class="container" id="mainView">
+    <section class="stats-strip">
+      <div><strong id="totalCount">0</strong><span>itens</span></div>
+      <div id="statsSep">·</div>
+      <div id="filterSummary" class="muted-sm">tudo</div>
     </section>
 
     <section class="toolbar">
       <label class="search">
         <span>⌕</span>
-        <input id="searchInput" type="search" placeholder="Pesquisar por nome ou data...">
+        <input id="searchInput" type="search" placeholder="Pesquisar nome, data ou legenda...">
       </label>
-      <input id="dateInput" class="date" type="date">
-      <button type="button" class="btn" id="todayBtn">Hoje</button>
-      <button type="button" class="btn" id="clearBtn">Limpar</button>
-      <button type="button" class="primary" id="uploadBtn">＋ Adicionar</button>
-      <input id="fileInput" type="file" accept="image/*,video/*" multiple hidden>
+      <button type="button" class="btn" id="filtersBtn">☰ Filtros</button>
     </section>
 
-    <section class="filter-group" id="uploaderFilter">
-      <button type="button" class="filter-btn active" data-who="">Todos</button>
-      <button type="button" class="filter-btn" data-who="Jurandir">Upado por Jurandir</button>
-      <button type="button" class="filter-btn" data-who="Mayanne">Upado por Mayanne</button>
+    <section class="filters-panel hidden" id="filtersPanel">
+      <div class="filter-row">
+        <span class="filter-label">Data</span>
+        <select id="dateMode" class="select">
+          <option value="date">Data da foto</option>
+          <option value="uploadedAt">Data do upload</option>
+        </select>
+        <input id="dateInput" class="date" type="date">
+        <button type="button" class="btn sm" id="todayBtn">Hoje</button>
+      </div>
+      <div class="filter-row">
+        <span class="filter-label">Categoria</span>
+        <select id="categorySelect" class="select"><option value="">Todas</option></select>
+      </div>
+      <div class="filter-row">
+        <label class="check-inline"><input type="checkbox" id="locOnlyChk"> Só com localização</label>
+      </div>
+      <section class="filter-group" id="uploaderFilter">
+        <button type="button" class="filter-btn active" data-who="">Todos</button>
+        <button type="button" class="filter-btn" data-who="Jurandir">Jurandir</button>
+        <button type="button" class="filter-btn" data-who="Mayanne">Mayanne</button>
+      </section>
+      <button type="button" class="btn sm" id="clearBtn">Limpar filtros</button>
     </section>
 
     <section class="timeline-nav" id="timelineNav"></section>
@@ -71,18 +81,39 @@
     <div id="empty" class="empty hidden">
       <div class="empty-icon">✦</div>
       <h3>Nenhuma memória encontrada</h3>
-      <p>Tente outra data ou adicione novos arquivos.</p>
+      <p>Tente outra data ou envie novos arquivos.</p>
     </div>
     <button type="button" id="loadMore" class="load-more hidden">Carregar mais</button>
   </main>
+
+  <section class="container hidden" id="historyView">
+    <h2 class="section-title">Histórico</h2>
+    <p class="muted-sm">Login, uploads, exclusões e compartilhamentos.</p>
+    <div id="historyList" class="history-list"></div>
+  </section>
+
+  <input id="fileInput" type="file" accept="image/*,video/*" multiple hidden>
+  <button type="button" class="fab" id="uploadBtn">＋</button>
+
+  <nav class="bottom-nav">
+    <button type="button" class="nav-item active" data-view="mainView"><span>🖼</span>Início</button>
+    <button type="button" class="nav-item" data-view="historyView" id="navHistory"><span>🕘</span>Histórico</button>
+  </nav>
+
+  <div class="selection-bar hidden" id="selectionBar">
+    <span id="selectionCount">0 selecionado(s)</span>
+    <div class="selection-actions">
+      <button type="button" class="btn sm" id="selCategorize">🏷 Categorizar</button>
+      <button type="button" class="btn sm danger" id="selDelete">🗑 Excluir</button>
+      <button type="button" class="btn sm" id="selCancel">Cancelar</button>
+    </div>
+  </div>
 
   <div class="modal hidden" id="login">
     <div class="panel">
       <h2>Entrar</h2>
       <p class="muted">Álbum privado de Jurandir &amp; Mayanne. Digite sua senha para entrar.</p>
-      <label>Senha
-        <input id="loginPassword" type="password" placeholder="Sua senha" autocomplete="current-password">
-      </label>
+      <label>Senha<input id="loginPassword" type="password" placeholder="Sua senha" autocomplete="current-password"></label>
       <div id="loginError" class="warning hidden">Senha incorreta.</div>
       <button type="button" class="primary wide" id="loginBtn">Entrar</button>
     </div>
@@ -94,9 +125,69 @@
     <div class="viewer-content" id="viewerContent"></div>
     <button type="button" class="viewer-arrow right" id="nextBtn">›</button>
     <div class="viewer-caption" id="viewerCaption"></div>
+    <div class="viewer-tags" id="viewerTags"></div>
     <div class="viewer-actions">
-      <button type="button" class="btn" id="viewerDownload">⬇ Baixar</button>
-      <button type="button" class="btn danger" id="viewerDelete">🗑 Excluir</button>
+      <div class="menu-wrap up">
+        <button type="button" class="btn round" id="viewerMenuBtn">⋯</button>
+        <div class="menu-dropdown hidden" id="viewerMenuDropdown">
+          <button type="button" class="menu-item" id="viewerDownload">⬇ Baixar</button>
+          <button type="button" class="menu-item" id="viewerCaptionBtn">✎ Legenda</button>
+          <button type="button" class="menu-item" id="viewerCategoryBtn">🏷 Categorias</button>
+          <button type="button" class="menu-item" id="viewerShareBtn">🔗 Compartilhar</button>
+          <button type="button" class="menu-item" id="viewerInfoBtn">ℹ Informações</button>
+          <button type="button" class="menu-item danger" id="viewerDelete">🗑 Excluir</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="captionModal">
+    <div class="panel">
+      <button type="button" class="modal-close" id="captionClose">×</button>
+      <h2>Legenda</h2>
+      <textarea id="captionInput" rows="3" placeholder="Escreva algo sobre esse momento..."></textarea>
+      <button type="button" class="primary wide" id="captionSave">Salvar</button>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="categoryModal">
+    <div class="panel">
+      <button type="button" class="modal-close" id="categoryClose">×</button>
+      <h2 id="categoryModalTitle">Categorias</h2>
+      <div id="categoryChips" class="chips"></div>
+      <label>Nova categoria
+        <div class="row-inline">
+          <input id="newCategoryInput" placeholder="ex: Viagens, Amigos...">
+          <button type="button" class="btn" id="newCategoryAdd">Criar</button>
+        </div>
+      </label>
+      <button type="button" class="primary wide" id="categorySave">Aplicar</button>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="shareModal">
+    <div class="panel">
+      <button type="button" class="modal-close" id="shareClose">×</button>
+      <h2>Compartilhar</h2>
+      <p class="muted-sm">Gera um link público que expira sozinho. Qualquer pessoa com o link e dentro do prazo consegue ver/baixar esse item — sem precisar de login.</p>
+      <label>Expira em
+        <select id="shareDuration" class="select">
+          <option value="3600000">1 hora</option>
+          <option value="86400000" selected>24 horas</option>
+          <option value="604800000">7 dias</option>
+          <option value="2592000000">30 dias</option>
+        </select>
+      </label>
+      <button type="button" class="primary wide" id="shareCreate">Gerar novo link</button>
+      <div id="shareLinksList" class="share-links"></div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="infoModal">
+    <div class="panel">
+      <button type="button" class="modal-close" id="infoClose">×</button>
+      <h2>Informações</h2>
+      <div id="infoBody" class="info-body"></div>
     </div>
   </div>
 
@@ -104,16 +195,20 @@
     <div class="panel">
       <button type="button" class="modal-close" id="settingsClose">×</button>
       <h2>Configuração</h2>
-      <p class="muted">Repositório: <b>JUURANDIR/-lbum</b> (main). Cole o token abaixo — ele é criptografado antes de ser salvo no repositório, então o GitHub não detecta e não revoga automaticamente. Não edite o token direto no config.json (nele fica só a versão criptografada).</p>
-      <label>Token Fine-grained
-        <input id="token" type="password" placeholder="github_pat_...">
-      </label>
+      <p class="muted">Repositório: <b id="repoLabel">JUURANDIR/albumjuemay</b> (main). Cole o token abaixo — ele é criptografado antes de ser salvo no repositório.</p>
+      <label>Token Fine-grained<input id="token" type="password" placeholder="github_pat_..."></label>
       <div class="warning">⚠ Nunca use um token com permissões maiores que o necessário (Contents → Read and write, só neste repositório).</div>
       <button type="button" class="primary wide" id="saveSettings">Salvar e conectar</button>
     </div>
   </div>
 
+  <div class="modal hidden" id="shareView">
+    <button type="button" class="modal-close" id="shareViewClose">×</button>
+    <div class="viewer-content" id="shareViewContent"></div>
+    <div class="viewer-caption" id="shareViewCaption"></div>
+  </div>
+
   <div class="toast" id="toast"></div>
-  <script src="app.js?v=14"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>
