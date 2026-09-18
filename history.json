@@ -1,5 +1,11 @@
 [
   {
+    "ts": "2026-09-18T22:38:09.117Z",
+    "who": "Jurandir",
+    "action": "share_revoke",
+    "details": "7fab91f5ff954015"
+  },
+  {
     "ts": "2026-09-18T21:49:27.733Z",
     "who": "Jurandir",
     "action": "share_create",
