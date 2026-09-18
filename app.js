@@ -51,6 +51,13 @@ async function decryptText(data,iv){
   const plainBuf=await decryptBuffer(cipherBuf,iv);
   return new TextDecoder().decode(plainBuf);
 }
+function guessMime(name,fallback){
+  if(fallback)return fallback;
+  const ext=(name.split(".").pop()||"").toLowerCase();
+  const map={jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png",gif:"image/gif",webp:"image/webp",heic:"image/heic",mp4:"video/mp4",mov:"video/quicktime",webm:"video/webm",m4v:"video/mp4"};
+  return map[ext]||"application/octet-stream";
+}
+const blobUrlCache=new Map();
 async function getDecryptedUrl(item){
   if(blobUrlCache.has(item.path))return blobUrlCache.get(item.path);
   const c=cfg();
@@ -58,7 +65,7 @@ async function getDecryptedUrl(item){
   if(!r.ok)throw Error("Falha ao baixar arquivo.");
   const cipherBuf=await r.arrayBuffer();
   const plainBuf=await decryptBuffer(cipherBuf,item.iv);
-  const url=URL.createObjectURL(new Blob([plainBuf],{type:item.type||"application/octet-stream"}));
+  const url=URL.createObjectURL(new Blob([plainBuf],{type:guessMime(item.name,item.type)}));
   blobUrlCache.set(item.path,url);
   return url;
 }
