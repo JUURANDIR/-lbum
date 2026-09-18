@@ -1,10 +1,10 @@
 /* =========================================================
-   Álbum Jurandir & Mayanne — app.js (v13)
+   Álbum Jurandir & Mayanne — app.js (v14)
    ========================================================= */
 (function(){
 "use strict";
 
-const VERSION = "13";
+const VERSION = "14";
 document.title = "Meu Álbum";
 
 /* ---------- segurança de carregamento ---------- */
@@ -262,26 +262,37 @@ function pumpDownloads(){
 const urlCache = new Map();
 const pendingMap = new Map();
 
-/* Busca com timeout de 5s no CDN; cai pra API se falhar */
+/* Verifica se o buffer veio truncado (compara com content-length) */
 async function fetchEncryptedBuffer(item){
   // 1) CDN público com timeout
   try{
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 5000);
+    const timer = setTimeout(() => ctrl.abort(), 6000);
     const r = await fetch(rawUrl(item.path), {signal: ctrl.signal});
     clearTimeout(timer);
     if(r.ok){
       const buf = await r.arrayBuffer();
-      if(buf.byteLength >= 16) return buf;   // sanity: arquivo AES-GCM mínimo
+      const lenHeader = r.headers.get("content-length");
+      const expected = lenHeader ? parseInt(lenHeader, 10) : 0;
+      // sanity: sem truncamento e com tamanho mínimo de um bloco AES-GCM
+      if(buf.byteLength >= 16 && (!expected || buf.byteLength === expected)){
+        return buf;
+      }
+      console.warn("[album] download truncado no CDN (", buf.byteLength, "/", expected, ") — usando API");
     }
-  }catch(e){ /* timeout ou erro de rede — cai pra API */ }
+  }catch(e){ /* timeout / rede — cai pra API */ }
 
-  // 2) API autenticada (funciona em repo privado também)
+  // 2) API autenticada
   const r = await api(contentsPath(String(item.path).split("/").map(enc).join("/")) + "?ref=" + enc(cfg().branch), {
     headers: {Accept: "application/vnd.github.raw"}
   });
   if(!r.ok) throw Error("Falha ao baixar arquivo (HTTP " + r.status + ").");
-  return await r.arrayBuffer();
+  const buf = await r.arrayBuffer();
+  const lenHeader = r.headers.get("content-length");
+  const expected = lenHeader ? parseInt(lenHeader, 10) : 0;
+  if(buf.byteLength < 16) throw Error("Arquivo corrompido (muito pequeno).");
+  if(expected && buf.byteLength !== expected) throw Error("Download truncado.");
+  return buf;
 }
 
 function getImageUrl(item){
@@ -307,6 +318,33 @@ function getImageUrl(item){
         subs.forEach(s => s.reject(e));
       }
     });
+  });
+}
+
+/* =========================================================
+   CRIA UM <img> TOTALMENTE DECODIFICADO
+   Esta é a correção do bug "carrega metade até dar zoom".
+   Resolve só depois do decode terminar; aí sim pode ir pro DOM.
+   ========================================================= */
+function makeDecodedImage(url){
+  return new Promise((resolve, reject) => {
+    const img = document.createElement("img");
+    img.alt = "";
+    img.decoding = "sync";     // decodificação síncrona ao renderizar
+    img.loading = "eager";
+    const done = async () => {
+      try{
+        if(img.decode) await img.decode();
+      }catch(_){}
+      resolve(img);
+    };
+    img.onload = done;
+    img.onerror = () => reject(Error("imagem inválida ou corrompida"));
+    img.src = url;
+    // fallback: se já estiver em cache, onload pode não disparar
+    if(img.complete && img.naturalWidth > 0){
+      done();
+    }
   });
 }
 
@@ -416,7 +454,6 @@ async function loadCardMedia(card){
     if(!card.isConnected || !wrap.isConnected) return;
 
     const isVideo = String(item.type || "").indexOf("video") === 0;
-    wrap.innerHTML = "";
 
     if(isVideo){
       const v = document.createElement("video");
@@ -424,16 +461,14 @@ async function loadCardMedia(card){
       v.muted = true;
       v.preload = "metadata";
       v.setAttribute("playsinline", "");
+      wrap.innerHTML = "";
       wrap.appendChild(v);
     } else {
-      const img = document.createElement("img");
-      img.alt = "";
-      img.src = url;
+      // >>> DECODIFICA ANTES DE INSERIR <<<
+      const img = await makeDecodedImage(url);
+      if(!card.isConnected || !wrap.isConnected) return;
+      wrap.innerHTML = "";
       wrap.appendChild(img);
-      // decode em paralelo — não bloqueia a inserção no DOM
-      if(img.decode){
-        img.decode().catch(() => {});
-      }
     }
     card.dataset.loaded = "1";
     card.dataset.loading = "";
@@ -495,7 +530,6 @@ function renderGallery(){
 
   if(moreEl) moreEl.classList.toggle("hidden", shown.length >= state.filtered.length);
 
-  // dispara o carregamento de todas as miniaturas (a fila limita a 6 em paralelo)
   const cards = gallery.querySelectorAll(".card");
   for(let i = 0; i < cards.length; i++){
     loadCardMedia(cards[i]);
@@ -520,12 +554,14 @@ async function showViewer(){
   if(content) content.innerHTML = "Carregando…";
   try{
     const url = await getImageUrl(x);
-    if(content){
-      if(String(x.type || "").indexOf("video") === 0){
-        content.innerHTML = '<video src="' + url + '" controls autoplay playsinline></video>';
-      } else {
-        content.innerHTML = '<img src="' + url + '" alt="">';
-      }
+    if(!content) return;
+    if(String(x.type || "").indexOf("video") === 0){
+      content.innerHTML = '<video src="' + url + '" controls autoplay playsinline></video>';
+    } else {
+      // mesmo tratamento: espera decodificar antes de mostrar
+      const img = await makeDecodedImage(url);
+      content.innerHTML = "";
+      content.appendChild(img);
     }
   }catch(e){
     if(content) content.innerHTML = "Erro ao carregar o arquivo.";
