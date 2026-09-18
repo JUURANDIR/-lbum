@@ -87,7 +87,7 @@ async function loadGallery(){
     const r=await api(`/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/gallery.json?ref=${encodeURIComponent(c.branch)}`);
     if(r.ok){const x=await r.json();const bytes=Uint8Array.from(atob(x.content.replace(/\n/g,"")),ch=>ch.charCodeAt(0));state.gallerySha=x.sha;state.items=JSON.parse(new TextDecoder().decode(bytes))}
     else if(r.status===404) state.items=[];
-    else throw Error("Não foi possível ler gallery.json.");
+    else{const detail=await r.json().catch(()=>({}));throw Error(`Não foi possível ler gallery.json (HTTP ${r.status}: ${detail.message||"erro desconhecido"}).`)}
     state.items.sort((a,b)=>b.date.localeCompare(a.date)||b.uploadedAt.localeCompare(a.uploadedAt));
     render();
   }catch(e){toast(e.message);render()}
@@ -242,11 +242,11 @@ async function uploadFiles(files){
 
 $("#loginBtn").onclick=()=>{if(doLogin($("#loginPassword").value))readConfig()};
 $("#loginPassword").addEventListener("keydown",e=>{if(e.key==="Enter"&&doLogin($("#loginPassword").value))readConfig()});
-$("#logoutBtn").onclick=()=>{$("#menuDropdown").classList.add("hidden");sessionStorage.removeItem("albumUser");state.user=null;location.reload()};
+$("#logoutBtn").onclick=(e)=>{e.stopPropagation();$("#menuDropdown").classList.add("hidden");sessionStorage.removeItem("albumUser");state.user=null;location.reload()};
 $("#menuBtn").onclick=(e)=>{e.stopPropagation();$("#menuDropdown").classList.toggle("hidden")};
 document.addEventListener("click",(e)=>{if(!e.target.closest(".menu-wrap"))$("#menuDropdown").classList.add("hidden")});
 
-$("#settingsBtn").onclick=()=>{$("#menuDropdown").classList.add("hidden");if(!requireLogin())return;$("#settings").classList.remove("hidden")}
+$("#settingsBtn").onclick=(e)=>{e.stopPropagation();$("#menuDropdown").classList.add("hidden");$("#settings").classList.remove("hidden")}
 $("#settingsClose").onclick=()=>$("#settings").classList.add("hidden");
 $("#saveSettings").onclick=async()=>{
   const token=$("#token").value.trim();

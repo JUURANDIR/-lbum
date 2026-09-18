@@ -10,6 +10,7 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-s
  radial-gradient(circle at 15% 0%,rgba(255,92,138,.20),transparent 30%),
  radial-gradient(circle at 90% 15%,rgba(255,151,118,.14),transparent 28%)}
 .topbar,.container{position:relative;z-index:1}
+.topbar{z-index:30}
 .topbar{max-width:1180px;margin:auto;padding:34px 22px 16px;display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
 .eyebrow{font-size:11px;letter-spacing:.2em;color:#ff9fbb;font-weight:800}
 h1{margin:5px 0;font-size:clamp(28px,5vw,46px);letter-spacing:-.04em}
