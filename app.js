@@ -1,13 +1,12 @@
 /* =========================================================
-   Álbum Jurandir & Mayanne — app.js (v14)
+   Álbum Jurandir & Mayanne — app.js (v15)
    ========================================================= */
 (function(){
 "use strict";
 
-const VERSION = "14";
+const VERSION = "15";
 document.title = "Meu Álbum";
 
-/* ---------- segurança de carregamento ---------- */
 window.addEventListener("error", e => {
   console.error("[album] erro global:", e.error || e.message);
   try{
@@ -29,7 +28,7 @@ const $ = s => {
 
 function on(sel, ev, fn){
   const el = typeof sel === "string" ? document.querySelector(sel) : sel;
-  if(!el){ console.warn("[album] listener ignorado, elemento não existe:", sel); return null; }
+  if(!el){ console.warn("[album] listener ignorado:", sel); return null; }
   el.addEventListener(ev, fn);
   return el;
 }
@@ -41,7 +40,6 @@ function ready(fn){
 
 console.log("[album] app.js v" + VERSION + " carregando...");
 
-/* ---------- estado ---------- */
 const state = {
   items: [],
   filtered: [],
@@ -233,9 +231,7 @@ function contentsPath(extra){
   return "/repos/" + enc(c.owner) + "/" + enc(c.repo) + "/contents/" + extra;
 }
 
-/* =========================================================
-   FILA DE DOWNLOAD — no máximo 6 em paralelo
-   ========================================================= */
+/* ---------- fila de download ---------- */
 const MAX_CONCURRENT = 6;
 let activeDownloads = 0;
 const downloadQueue = [];
@@ -262,9 +258,7 @@ function pumpDownloads(){
 const urlCache = new Map();
 const pendingMap = new Map();
 
-/* Verifica se o buffer veio truncado (compara com content-length) */
 async function fetchEncryptedBuffer(item){
-  // 1) CDN público com timeout
   try{
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 6000);
@@ -274,24 +268,19 @@ async function fetchEncryptedBuffer(item){
       const buf = await r.arrayBuffer();
       const lenHeader = r.headers.get("content-length");
       const expected = lenHeader ? parseInt(lenHeader, 10) : 0;
-      // sanity: sem truncamento e com tamanho mínimo de um bloco AES-GCM
       if(buf.byteLength >= 16 && (!expected || buf.byteLength === expected)){
         return buf;
       }
-      console.warn("[album] download truncado no CDN (", buf.byteLength, "/", expected, ") — usando API");
+      console.warn("[album] truncado no CDN", buf.byteLength, "/", expected, "→ API");
     }
-  }catch(e){ /* timeout / rede — cai pra API */ }
+  }catch(e){}
 
-  // 2) API autenticada
   const r = await api(contentsPath(String(item.path).split("/").map(enc).join("/")) + "?ref=" + enc(cfg().branch), {
     headers: {Accept: "application/vnd.github.raw"}
   });
   if(!r.ok) throw Error("Falha ao baixar arquivo (HTTP " + r.status + ").");
   const buf = await r.arrayBuffer();
-  const lenHeader = r.headers.get("content-length");
-  const expected = lenHeader ? parseInt(lenHeader, 10) : 0;
-  if(buf.byteLength < 16) throw Error("Arquivo corrompido (muito pequeno).");
-  if(expected && buf.byteLength !== expected) throw Error("Download truncado.");
+  if(buf.byteLength < 16) throw Error("Arquivo corrompido.");
   return buf;
 }
 
@@ -321,37 +310,61 @@ function getImageUrl(item){
   });
 }
 
-/* =========================================================
-   CRIA UM <img> TOTALMENTE DECODIFICADO
-   Esta é a correção do bug "carrega metade até dar zoom".
-   Resolve só depois do decode terminar; aí sim pode ir pro DOM.
-   ========================================================= */
-function makeDecodedImage(url){
-  return new Promise((resolve, reject) => {
-    const img = document.createElement("img");
-    img.alt = "";
-    img.decoding = "sync";     // decodificação síncrona ao renderizar
-    img.loading = "eager";
-    const done = async () => {
-      try{
-        if(img.decode) await img.decode();
-      }catch(_){}
-      resolve(img);
-    };
-    img.onload = done;
-    img.onerror = () => reject(Error("imagem inválida ou corrompida"));
-    img.src = url;
-    // fallback: se já estiver em cache, onload pode não disparar
-    if(img.complete && img.naturalWidth > 0){
-      done();
-    }
-  });
-}
-
 function revokeImage(path){
   const u = urlCache.get(path);
   if(u){ try{ URL.revokeObjectURL(u); }catch{} urlCache.delete(path); }
   pendingMap.delete(path);
+}
+
+/* ---------- imagem totalmente pronta ---------- */
+function loadImageElement(url){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = async () => {
+      try{ if(img.decode) await img.decode(); }catch(_){}
+      resolve(img);
+    };
+    img.onerror = () => reject(Error("imagem inválida"));
+    img.src = url;
+    if(img.complete && img.naturalWidth > 0){
+      (async () => {
+        try{ if(img.decode) await img.decode(); }catch(_){}
+        resolve(img);
+      })();
+    }
+  });
+}
+
+/* =========================================================
+   MINIATURA EM CANVAS  —  impede o browser de pintar parcial.
+   Canvas é um bitmap síncrono: ou está pronto, ou não existe.
+   ========================================================= */
+const THUMB_SIZE = 640;   // px do bitmap interno da miniatura
+
+async function buildThumbCanvas(url){
+  const img = await loadImageElement(url);
+  const iw = img.naturalWidth | 0;
+  const ih = img.naturalHeight | 0;
+  if(!iw || !ih) throw Error("dimensões inválidas");
+
+  const canvas = document.createElement("canvas");
+  canvas.width = THUMB_SIZE;
+  canvas.height = THUMB_SIZE;
+  canvas.className = "thumb-canvas";
+
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+
+  // cover-fit: escala para preencher o quadrado, corta o excesso
+  const scale = Math.max(THUMB_SIZE / iw, THUMB_SIZE / ih);
+  const dw = iw * scale;
+  const dh = ih * scale;
+  const dx = (THUMB_SIZE - dw) / 2;
+  const dy = (THUMB_SIZE - dh) / 2;
+  ctx.drawImage(img, dx, dy, dw, dh);
+
+  return canvas;
 }
 
 /* ---------- galeria ---------- */
@@ -365,13 +378,13 @@ async function loadGallery(){
       const bytes = Uint8Array.from(atob(String(x.content || "").replace(/\n/g, "")), ch => ch.charCodeAt(0));
       state.gallerySha = x.sha;
       try{ state.items = JSON.parse(new TextDecoder().decode(bytes)); }
-      catch{ state.items = []; toast("gallery.json corrompido — reiniciando catálogo."); }
+      catch{ state.items = []; toast("gallery.json corrompido — reiniciando."); }
     } else if(r.status === 404){
       state.items = [];
       state.gallerySha = null;
     } else {
       const detail = await r.json().catch(() => ({}));
-      throw Error("Não foi possível ler gallery.json (HTTP " + r.status + ": " + (detail.message || "erro") + ").");
+      throw Error("Erro ao ler gallery.json (HTTP " + r.status + ": " + (detail.message || "?") + ").");
     }
     state.items.sort((a, b) =>
       String(b.date || "").localeCompare(String(a.date || "")) ||
@@ -436,7 +449,7 @@ function buildTimeline(){
   });
 }
 
-/* ---------- cards ---------- */
+/* ---------- card ---------- */
 async function loadCardMedia(card){
   if(!card) return;
   if(card.dataset.loaded === "1" || card.dataset.loading === "1") return;
@@ -464,11 +477,11 @@ async function loadCardMedia(card){
       wrap.innerHTML = "";
       wrap.appendChild(v);
     } else {
-      // >>> DECODIFICA ANTES DE INSERIR <<<
-      const img = await makeDecodedImage(url);
+      // >>> desenha em canvas, não em <img> <<<
+      const canvas = await buildThumbCanvas(url);
       if(!card.isConnected || !wrap.isConnected) return;
       wrap.innerHTML = "";
-      wrap.appendChild(img);
+      wrap.appendChild(canvas);
     }
     card.dataset.loaded = "1";
     card.dataset.loading = "";
@@ -509,7 +522,7 @@ function renderGallery(){
     card.dataset.idx = i;
     const isVideo = String(x.type || "").indexOf("video") === 0;
     card.innerHTML =
-      '<div class="media-wrap"><span class="skeleton"></span></div>' +
+      '<div class="media-wrap"></div>' +
       '<span class="type">' + (isVideo ? "▶ Vídeo" : "▣ Foto") + '</span>' +
       '<span class="uploader-tag">' + escapeHtml(x.uploadedBy || "?") + '</span>' +
       '<div class="name" title="' + escapeHtml(x.name) + '">' + escapeHtml(x.name) + '</div>';
@@ -519,7 +532,7 @@ function renderGallery(){
         delete card.dataset.loaded;
         delete card.dataset.loading;
         const w = card.querySelector(".media-wrap");
-        if(w) w.innerHTML = '<span class="skeleton"></span>';
+        if(w) w.innerHTML = "";
         loadCardMedia(card);
         return;
       }
@@ -558,8 +571,7 @@ async function showViewer(){
     if(String(x.type || "").indexOf("video") === 0){
       content.innerHTML = '<video src="' + url + '" controls autoplay playsinline></video>';
     } else {
-      // mesmo tratamento: espera decodificar antes de mostrar
-      const img = await makeDecodedImage(url);
+      const img = await loadImageElement(url);
       content.innerHTML = "";
       content.appendChild(img);
     }
@@ -616,7 +628,7 @@ function deleteItem(item){
       let sha = item.sha || null;
       const r = await api(contentsPath(apiPath) + "?ref=" + enc(c.branch));
       if(r.ok) sha = (await r.json()).sha;
-      else if(r.status !== 404) throw Error("Não foi possível obter o arquivo para excluir.");
+      else if(r.status !== 404) throw Error("Não foi possível obter o arquivo.");
 
       if(sha){
         const res = await api(contentsPath(apiPath), {
@@ -625,7 +637,7 @@ function deleteItem(item){
         });
         if(!res.ok && res.status !== 404){
           const err = await res.json().catch(() => ({}));
-          throw Error(err.message || ("Falha ao excluir arquivo (HTTP " + res.status + ")."));
+          throw Error(err.message || ("Falha ao excluir (HTTP " + res.status + ")."));
         }
       }
 
@@ -823,7 +835,7 @@ function uploadFiles(files){
    LISTENERS + INIT
    ========================================================= */
 ready(() => {
-  console.log("[album] DOM pronto, registrando listeners v" + VERSION);
+  console.log("[album] DOM pronto, listeners v" + VERSION);
 
   on("#loginBtn", "click", () => {
     const p = document.getElementById("loginPassword");
