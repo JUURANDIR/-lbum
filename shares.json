@@ -1,1 +1,14 @@
-[]
+[
+  {
+    "id": "7fab91f5ff954015",
+    "path": "media/2026/09/2026-09-18/1789767592945-1001471232.jpg.enc",
+    "sha": "f698934d6906bdb7576e936b6d5ddc9cea562ce4",
+    "iv": "WqEYYzazLoKauZW7",
+    "type": "image/jpeg",
+    "name": "1001471232.jpg",
+    "caption": "teste",
+    "createdBy": "Jurandir",
+    "createdAt": 1789768166841,
+    "expiresAt": 1789771766841
+  }
+]
