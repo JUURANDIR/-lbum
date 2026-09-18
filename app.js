@@ -1,10 +1,10 @@
 /* =========================================================
-   Álbum Jurandir & Mayanne — app.js (v12)
+   Álbum Jurandir & Mayanne — app.js (v13)
    ========================================================= */
 (function(){
 "use strict";
 
-const VERSION = "12";
+const VERSION = "13";
 document.title = "Meu Álbum";
 
 /* ---------- segurança de carregamento ---------- */
@@ -79,7 +79,7 @@ function doLogin(pass){
   const badge = $("#userBadge");
   if(badge){ badge.textContent = "Olá, " + found; badge.classList.remove("hidden"); }
   $("#logoutBtn")?.classList.remove("hidden");
-  document.body.classList.add("logged-in");   // <-- esconde marca + hero
+  document.body.classList.add("logged-in");
   return true;
 }
 
@@ -94,7 +94,7 @@ function requireLogin(){
   const badge = $("#userBadge");
   if(badge){ badge.textContent = "Olá, " + u; badge.classList.remove("hidden"); }
   $("#logoutBtn")?.classList.remove("hidden");
-  document.body.classList.add("logged-in");   // <-- esconde marca + hero
+  document.body.classList.add("logged-in");
   return true;
 }
 
@@ -233,15 +233,50 @@ function contentsPath(extra){
   return "/repos/" + enc(c.owner) + "/" + enc(c.repo) + "/contents/" + extra;
 }
 
+/* =========================================================
+   FILA DE DOWNLOAD — no máximo 6 em paralelo
+   ========================================================= */
+const MAX_CONCURRENT = 6;
+let activeDownloads = 0;
+const downloadQueue = [];
+
+function scheduleDownload(fn){
+  return new Promise((resolve, reject) => {
+    downloadQueue.push({fn, resolve, reject});
+    pumpDownloads();
+  });
+}
+
+function pumpDownloads(){
+  while(activeDownloads < MAX_CONCURRENT && downloadQueue.length){
+    const task = downloadQueue.shift();
+    activeDownloads++;
+    Promise.resolve()
+      .then(task.fn)
+      .then(task.resolve, task.reject)
+      .finally(() => { activeDownloads--; pumpDownloads(); });
+  }
+}
+
 /* ---------- mídia ---------- */
 const urlCache = new Map();
 const pendingMap = new Map();
 
+/* Busca com timeout de 5s no CDN; cai pra API se falhar */
 async function fetchEncryptedBuffer(item){
+  // 1) CDN público com timeout
   try{
-    const r = await fetch(rawUrl(item.path));
-    if(r.ok) return await r.arrayBuffer();
-  }catch{}
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    const r = await fetch(rawUrl(item.path), {signal: ctrl.signal});
+    clearTimeout(timer);
+    if(r.ok){
+      const buf = await r.arrayBuffer();
+      if(buf.byteLength >= 16) return buf;   // sanity: arquivo AES-GCM mínimo
+    }
+  }catch(e){ /* timeout ou erro de rede — cai pra API */ }
+
+  // 2) API autenticada (funciona em repo privado também)
   const r = await api(contentsPath(String(item.path).split("/").map(enc).join("/")) + "?ref=" + enc(cfg().branch), {
     headers: {Accept: "application/vnd.github.raw"}
   });
@@ -256,7 +291,7 @@ function getImageUrl(item){
   }
   return new Promise((resolve, reject) => {
     pendingMap.set(item.path, [{resolve, reject}]);
-    (async () => {
+    scheduleDownload(async () => {
       try{
         const cipherBuf = await fetchEncryptedBuffer(item);
         const plainBuf = await decryptBuffer(cipherBuf, item.iv);
@@ -271,7 +306,7 @@ function getImageUrl(item){
         pendingMap.delete(item.path);
         subs.forEach(s => s.reject(e));
       }
-    })();
+    });
   });
 }
 
@@ -363,28 +398,26 @@ function buildTimeline(){
   });
 }
 
-/* ---------- observer ---------- */
-const mediaObserver = new IntersectionObserver(entries => {
-  entries.forEach(entry => {
-    if(!entry.isIntersecting) return;
-    mediaObserver.unobserve(entry.target);
-    loadCardMedia(entry.target);
-  });
-}, {rootMargin: "600px"});
-
+/* ---------- cards ---------- */
 async function loadCardMedia(card){
-  if(!card || card.dataset.loaded === "1" || card.dataset.loaded === "loading") return;
+  if(!card) return;
+  if(card.dataset.loaded === "1" || card.dataset.loading === "1") return;
+
   const idx = +card.dataset.idx;
   const item = state.filtered[idx];
   if(!item) return;
-  card.dataset.loaded = "loading";
+
+  card.dataset.loading = "1";
   const wrap = card.querySelector(".media-wrap");
   if(!wrap) return;
+
   try{
     const url = await getImageUrl(item);
     if(!card.isConnected || !wrap.isConnected) return;
+
     const isVideo = String(item.type || "").indexOf("video") === 0;
     wrap.innerHTML = "";
+
     if(isVideo){
       const v = document.createElement("video");
       v.src = url;
@@ -395,17 +428,18 @@ async function loadCardMedia(card){
     } else {
       const img = document.createElement("img");
       img.alt = "";
-      img.onerror = () => {
-        wrap.textContent = "Formato não suportado";
-        card.dataset.loaded = "";
-      };
       img.src = url;
       wrap.appendChild(img);
+      // decode em paralelo — não bloqueia a inserção no DOM
+      if(img.decode){
+        img.decode().catch(() => {});
+      }
     }
     card.dataset.loaded = "1";
+    card.dataset.loading = "";
   }catch(e){
-    console.warn("[album] falha card:", e);
-    card.dataset.loaded = "";
+    console.warn("[album] falha card", idx, item.name, e);
+    card.dataset.loading = "";
     card.dataset.failed = "1";
     if(wrap.isConnected) wrap.textContent = "Erro — toque para tentar";
   }
@@ -448,6 +482,7 @@ function renderGallery(){
       if(card.dataset.failed === "1"){
         delete card.dataset.failed;
         delete card.dataset.loaded;
+        delete card.dataset.loading;
         const w = card.querySelector(".media-wrap");
         if(w) w.innerHTML = '<span class="skeleton"></span>';
         loadCardMedia(card);
@@ -460,6 +495,7 @@ function renderGallery(){
 
   if(moreEl) moreEl.classList.toggle("hidden", shown.length >= state.filtered.length);
 
+  // dispara o carregamento de todas as miniaturas (a fila limita a 6 em paralelo)
   const cards = gallery.querySelectorAll(".card");
   for(let i = 0; i < cards.length; i++){
     loadCardMedia(cards[i]);
@@ -525,7 +561,7 @@ async function downloadItem(item){
   }catch(e){ toast("Falha ao baixar: " + e.message); }
 }
 
-/* ---------- fila ---------- */
+/* ---------- fila de mutações ---------- */
 let mutex = Promise.resolve();
 function serialize(fn){
   const next = mutex.then(fn, fn);
