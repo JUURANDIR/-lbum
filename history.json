@@ -1,5 +1,11 @@
 [
   {
+    "ts": "2026-09-19T14:01:38.475Z",
+    "who": "Jurandir",
+    "action": "category",
+    "details": "42 item(ns) → nós"
+  },
+  {
     "ts": "2026-09-19T14:00:23.734Z",
     "who": "Jurandir",
     "action": "delete",
