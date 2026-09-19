@@ -1,5 +1,11 @@
 [
   {
+    "ts": "2026-09-19T14:00:23.734Z",
+    "who": "Jurandir",
+    "action": "delete",
+    "details": "1001471232.jpg"
+  },
+  {
     "ts": "2026-09-18T22:38:09.117Z",
     "who": "Jurandir",
     "action": "share_revoke",
